@@ -1,0 +1,18 @@
+FROM docker.n8n.io/n8nio/n8n:latest
+
+USER root
+
+RUN apk add --no-cache \
+    python3 py3-pip python3-dev \
+    build-base g++ musl-dev libffi-dev openssl-dev \
+    ffmpeg curl
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --no-cache-dir \
+    httpx requests beautifulsoup4 feedparser \
+    openai anthropic Pillow numpy pandas python-dotenv
+
+ENV PYTHONUNBUFFERED=1
+USER node

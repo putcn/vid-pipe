@@ -1,0 +1,88 @@
+version: "3.8"
+
+volumes:
+  postgres_data:
+  n8n_data:
+  shared_data:
+
+networks:
+  vidpipe:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [vidpipe]
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB}
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    container_name: vidpipe-n8n
+    restart: unless-stopped
+    networks: [vidpipe]
+    ports:
+      - "5678:5678"
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: ${N8N_HOST}
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_MODE: external
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      COMFYUI_URL: ${COMFYUI_URL}
+      SAU_API_URL: http://sau-backend:8080
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - shared_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  n8n-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    restart: unless-stopped
+    networks: [vidpipe]
+    environment:
+      N8N_RUNNERS_SERVER_URI: http://n8n:5679
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+    depends_on:
+      - n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  sau-backend:
+    build:
+      context: ./sau-backend
+    container_name: vidpipe-sau
+    restart: unless-stopped
+    networks: [vidpipe]
+    environment:
+      SAU_COOKIE_DIR: /data/cookies
+      SAU_VIDEO_DIR:  /data/videos
+    volumes:
+      - shared_data:/data
