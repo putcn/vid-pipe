@@ -1,0 +1,64 @@
+# docker-compose.vllm.yml
+# 运行在 llm-01 机器上
+# 用法（与主服务合并启动）:
+#   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
+# 或单独启动 vLLM:
+#   docker compose -f docker-compose.vllm.yml up -d
+
+version: "3.8"
+
+volumes:
+  hf_cache:   # HuggingFace 模型缓存，持久化避免重复下载
+
+networks:
+  vidpipe:
+    external: true  # 复用主 compose 已创建的网络
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vidpipe-vllm
+    restart: unless-stopped
+    networks: [vidpipe]
+    ports:
+      - "8000:8000"
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      HF_HOME: /root/.cache/huggingface
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
+      VLLM_NO_USAGE_STATS: "1"
+    volumes:
+      # 持久化模型缓存到本地 volume（重建容器不重新下载）
+      # 如需指定宿主路径，改为: - /data/models:/root/.cache/huggingface
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: "2gb"  # vLLM 张量传递需要共享内存，默认 64MB 会报错
+    command: >
+      --model google/gemma-4-27b-it
+      --quantization bitsandbytes
+      --load-format bitsandbytes
+      --bnb-quantization-type nf4
+      --served-model-name gemma4
+      --host 0.0.0.0
+      --port 8000
+      --gpu-memory-utilization 0.92
+      --max-model-len 8192
+      --max-num-seqs 1
+      --disable-log-requests
+      --enable-auto-tool-choice
+      --tool-call-parser gemma4
+      --reasoning-parser gemma4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s  # 模型加载时间较长

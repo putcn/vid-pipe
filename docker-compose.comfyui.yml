@@ -1,0 +1,72 @@
+# docker-compose.comfyui.yml
+# 运行在 llm-02 机器上（16core CPU, 64G RAM, RTX 4090 24GB）
+# 用法:
+#   docker compose -f docker-compose.comfyui.yml up -d
+#
+# 首次启动前，先下载 LTX 2.3 模型到本地：
+#   mkdir -p ./comfyui-data/models/checkpoints
+#   mkdir -p ./comfyui-data/models/text_encoders
+#   mkdir -p ./comfyui-data/models/vae
+#   # FP8 版本（推荐 4090，约 23GB）：
+#   huggingface-cli download Lightricks/LTX-Video \
+#     --include "ltx-video-2b-v0.9.1-fp8.safetensors" \
+#     --local-dir ./comfyui-data/models/checkpoints/
+#   # 也可下载蒸馏版（约 14GB，速度更快但质量稍低）：
+#   # huggingface-cli download Lightricks/LTX-Video-Distilled \
+#   #   --include "ltx-video-2b-v0.9.1-distilled-fp8.safetensors" \
+#   #   --local-dir ./comfyui-data/models/checkpoints/
+#   # T5-XXL 文字编码器（必须）：
+#   huggingface-cli download Lightricks/LTX-Video \
+#     --include "t5xxl_fp16.safetensors" \
+#     --local-dir ./comfyui-data/models/text_encoders/
+
+version: "3.8"
+
+networks:
+  vidpipe_comfy:
+    driver: bridge
+
+services:
+  comfyui:
+    image: ghcr.io/ai-dock/comfyui:latest-cuda
+    container_name: vidpipe-comfyui
+    restart: unless-stopped
+    networks: [vidpipe_comfy]
+    ports:
+      - "8188:8188"   # ComfyUI Web UI & API
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # 显存优化：4090 24GB 跑 LTX 2.3 fp8 全精度无需开 CPU offload
+      # 如果 OOM，取消注释下面这行：
+      # COMFYUI_EXTRA_ARGS: "--fp8_e4m3fn-unet --lowvram"
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
+      # ComfyUI 监听所有接口（供 n8n 从 llm-01 远程调用）
+      CLI_ARGS: "--listen 0.0.0.0 --port 8188"
+    volumes:
+      # 模型文件挂载：宿主机 ./comfyui-data 持久化所有数据
+      - ./comfyui-data/models:/opt/ComfyUI/models
+      - ./comfyui-data/output:/opt/ComfyUI/output
+      - ./comfyui-data/input:/opt/ComfyUI/input
+      - ./comfyui-data/custom_nodes:/opt/ComfyUI/custom_nodes
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        # 为 LTX 2.3 VAE 解码和多帧处理预留系统内存
+        # llm-02 有 64G RAM，分配 48G 给容器
+        limits:
+          memory: 48g
+        reservations:
+          memory: 16g
+    shm_size: "8gb"  # LTX 2.3 多帧生成需要较大共享内存
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

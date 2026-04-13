@@ -1,96 +1,118 @@
-# VidPipe
+# VidPipe — 热点→视频→抖音/小红书 全自动流水线
 
-> 热点抓取 → LLM文案 → ComfyUI视频生成 → 人工审核 → 抖音/小红书自动发布
+自动抓取微博/百度热搜，用 LLM 生成文案和提示词，ComfyUI + LTX-Video 2.3 生成竖版短视频，人工审核后自动发布到抖音和小红书。
 
-基于 **n8n** 的全流程短视频生产线，所有 LLM 和 ComfyUI 调用封装在 Python Code 节点，支持本地模型（Ollama/vLLM）和云端模型（OpenAI/DeepSeek）无缝切换。
-
-## 流水线
+## 架构概览
 
 ```
-定时触发(6h) → 热点抓取 → LLM文案生成 → ComfyUI视频生成
-    → 人工审核(Wait) → 发布抖音 + 发布小红书 → 结果汇总
+┌──────────────────────────────────────────────┐
+│  llm-01（主控节点）                            │
+│  ├── n8n          :5678  流程编排              │
+│  ├── n8n-runner          Python 执行器         │
+│  ├── postgres     :5432  工作流状态存储         │
+│  ├── sau-backend  :8080  抖音/小红书发布        │
+│  └── vLLM         :8000  Gemma 4 27B IT NF4   │
+└──────────────────┬───────────────────────────┘
+                   │ HTTP API
+┌──────────────────▼───────────────────────────┐
+│  llm-02（视频生成节点）                         │
+│  └── ComfyUI      :8188  LTX-Video 2.3 生成   │
+└──────────────────────────────────────────────┘
 ```
 
-## 目录结构
+## 节点配置
 
-```
-vid-pipe/
-├── workflow.json         # n8n Workflow（导入 n8n UI）
-├── docker-compose.yml    # 整栈编排
-├── Dockerfile.n8n        # n8n 主节点（含 Python 环境）
-├── Dockerfile.runner     # External Task Runner
-├── .env.example          # 环境变量模板（复制为 .env 填写）
-└── sau-backend/
-    ├── Dockerfile        # social-auto-upload 服务
-    └── server.py         # FastAPI 包装层
-```
+| 服务 | 机器 | 配置 | Compose 文件 |
+|---|---|---|---|
+| n8n + postgres + sau | llm-01 | 任意 | `docker-compose.yml` |
+| vLLM (Gemma 4 27B) | llm-01 | RTX 4090 24GB | `docker-compose.vllm.yml` |
+| ComfyUI (LTX 2.3) | llm-02 | 16core / 64G / RTX 4090 | `docker-compose.comfyui.yml` |
 
 ## 快速开始
 
-### 1. 配置
+### 0. 前置条件
+
+- llm-01 和 llm-02 均安装 Docker + NVIDIA Container Toolkit
+- HuggingFace 账号，已接受 [Gemma 4](https://huggingface.co/google/gemma-4-27b-it) 和 [LTX-Video](https://huggingface.co/Lightricks/LTX-Video) 使用协议
+- 两台机器在同一局域网，互相可以通过主机名或 IP 访问
+
+### 1. 配置环境变量
 
 ```bash
 cp .env.example .env
-vim .env  # 填写 DB密码、n8n密钥、LLM配置、ComfyUI地址
+# 编辑 .env，填写 HF_TOKEN、数据库密码、llm-01/llm-02 的实际 IP 或主机名
+vim .env
 ```
 
-### 2. 启动
+### 2. llm-02：准备 LTX 2.3 模型文件
 
 ```bash
-docker compose up -d --build
+# 在 llm-02 上执行
+mkdir -p ./comfyui-data/models/{checkpoints,text_encoders,vae,loras}
+mkdir -p ./comfyui-data/{output,input,custom_nodes}
+
+# 下载 LTX-Video 2.3 FP8 主模型（约 23GB，4090 推荐版本）
+huggingface-cli download Lightricks/LTX-Video \
+  --include "ltx-video-2b-v0.9.1-fp8.safetensors" \
+  --local-dir ./comfyui-data/models/checkpoints/
+
+# 下载 T5-XXL 文字编码器（必须，约 10GB）
+huggingface-cli download Lightricks/LTX-Video \
+  --include "t5xxl_fp16.safetensors" \
+  --local-dir ./comfyui-data/models/text_encoders/
+
+# 启动 ComfyUI
+docker compose -f docker-compose.comfyui.yml up -d
+# 查看启动日志
+docker logs -f vidpipe-comfyui
 ```
 
-### 3. 初始化平台 Cookie（首次必做）
-
-在**宿主机**（有浏览器的环境）运行：
+### 3. llm-01：启动主服务 + vLLM
 
 ```bash
-pip install social-auto-upload playwright
-playwright install chromium
+# 在 llm-01 上执行
 
-# 抖音登录（弹出浏览器扫码）
-python -c "
-import asyncio
-from uploader.douyin_uploader.main import douyin_setup
-asyncio.run(douyin_setup('./douyin_cookie.json', handle=True))
-"
+# 先单独创建网络（首次）
+docker network create vidpipe 2>/dev/null || true
 
-# 小红书登录
-python -c "
-import asyncio
-from uploader.xhs_uploader.main import xhs_setup
-asyncio.run(xhs_setup('./xhs_cookie.json', handle=True))
-"
+# 启动 n8n + postgres + sau-backend
+docker compose -f docker-compose.yml up -d
 
-# 复制 cookie 到容器共享卷
-docker cp douyin_cookie.json vidpipe-n8n-main:/data/cookies/douyin_cookie.json
-docker cp xhs_cookie.json    vidpipe-n8n-main:/data/cookies/xhs_cookie.json
+# 启动 vLLM（首次启动会从 HuggingFace 下载 Gemma 4，约 15GB）
+docker compose -f docker-compose.vllm.yml up -d
+
+# 查看 Gemma 4 加载进度
+docker logs -f vidpipe-vllm
+
+# 确认 vLLM 就绪
+curl http://localhost:8000/health
+# 返回 {"status":"ok"} 即可
 ```
 
-### 4. 导入 Workflow
+### 4. 导入 n8n 工作流
 
-1. 打开 http://localhost:5678
-2. Workflows → Import from file → 选择 `workflow.json`
-3. 激活 Workflow
+1. 打开 `http://llm-01:5678`
+2. 进入 **Workflows → Import from File**
+3. 选择 `workflow.json`
+4. 在 **Settings** 里确认环境变量 `LLM_BASE_URL`、`LLM_MODEL`、`COMFYUI_URL` 已注入
 
-## LLM 切换
+## LTX 2.3 在 4090 上的参数建议
 
-修改 `.env` 中三个变量，重启即可：
+| 参数 | 推荐值 | 说明 |
+|---|---|---|  
+| 分辨率 | 768×1280 (9:16) | 竖版，4090 可全精度跑 |
+| 帧数 | 97 帧 (≈4s @24fps) | 超过 161 帧质量下降 |
+| Steps | 30–40 | fp8 版本下质量与速度的平衡点 |
+| CFG | 3.5 | LTX 官方推荐值 |
+| VAE decode | GPU（不开 CPU offload）| 4090 显存够用 |
 
-| 场景 | LLM_BASE_URL | LLM_MODEL |
-|---|---|---|
-| 本地 Ollama | `http://host.docker.internal:11434/v1` | `qwen2.5:14b` |
-| 本地 vLLM | `http://host.docker.internal:8000/v1` | `Qwen/Qwen2.5-14B` |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o` |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+## 常见问题
 
-## ComfyUI Workflow 替换
+**ComfyUI CUDA OOM**  
+在 `docker-compose.comfyui.yml` 的 `CLI_ARGS` 里加 `--fp8_e4m3fn-unet` 或降分辨率到 512×896。
 
-`workflow.json` 中 `ComfyUI视频/图像生成` 节点里的 `COMFY_WORKFLOW` 字典
-是 SD1.5 基础 workflow，替换为你的实际 ComfyUI workflow JSON 即可。
+**vLLM JSON 输出带 markdown 代码块**  
+在 system prompt 末尾加：`只输出 JSON 对象本身，不要包含任何 markdown 格式或代码块包裹。`
 
-## 注意
-
-- Cookie 有效期约 7-30 天，到期后需重新登录
-- sau-backend 使用 Playwright 模拟浏览器，需要宿主机或 VNC 环境扫码
-- ComfyUI 需提前安装对应模型和自定义节点
+**n8n 无法访问 llm-02 的 ComfyUI**  
+检查 `.env` 里 `COMFYUI_URL` 是否填了 llm-02 的实际 IP，确认防火墙放行 8188 端口。
