@@ -2,9 +2,12 @@ FROM n8nio/runners:latest
 
 USER root
 
-# 安装第三方包到官方 venv（runner 用的就是这个 venv 里的 Python）
-RUN /opt/runners/task-runner-python/.venv/bin/pip install \
+# 安装第三方包到官方 venv
+RUN /opt/runners/task-runner-python/.venv/bin/pip install --no-cache-dir \
     httpx requests beautifulsoup4 feedparser \
     openai anthropic Pillow numpy pandas python-dotenv
+
+# 覆盖默认配置，修正 args 和开放 external allow
+COPY n8n-task-runners.json /etc/n8n-task-runners.json
 
 USER runner
