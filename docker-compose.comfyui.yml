@@ -29,15 +29,16 @@ services:
     restart: unless-stopped
     networks: [vidpipe_comfy]
     ports:
-      - "0.0.0.0:8188:8188"   # ComfyUI Web UI & API，所有接口监听（含 IB 10.0.0.2）
+      - "0.0.0.0:8188:8188"
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
-      # ComfyUI 进程内部也监听 0.0.0.0，供 llm-01 通过 IB/千兆 远程调用
       CLI_ARGS: "--listen 0.0.0.0 --port 8188"
+      # 关闭 ai-dock 内置 Caddy 登录认证，允许 API 直接访问
+      WEB_ENABLE_AUTH: "false"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
