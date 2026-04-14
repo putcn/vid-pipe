@@ -2,6 +2,7 @@
   "task-runners": [
     {
       "runner-type": "javascript",
+      "workdir": "/opt/runners/task-runner-js",
       "health-check-server-port": "9091",
       "env-overrides": {
         "NODE_FUNCTION_ALLOW_BUILTIN": "*",
@@ -10,6 +11,7 @@
     },
     {
       "runner-type": "python",
+      "workdir": "/opt/runners/task-runner-python",
       "health-check-server-port": "9092",
       "env-overrides": {
         "N8N_RUNNERS_STDLIB_ALLOW": "json,os,re,time,uuid,pathlib,urllib,urllib.request,urllib.parse,urllib.error,http,http.client,copy,datetime,math,random,hashlib,base64,io,collections,itertools,functools,string,typing",
