@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     networks: [vidpipe]
     ports:
-      - "5678:5678"
+      - "0.0.0.0:5678:5678"   # n8n Web UI & Webhook，所有接口监听
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres

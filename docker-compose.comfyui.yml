@@ -1,5 +1,6 @@
 # docker-compose.comfyui.yml
 # 运行在 llm-02 机器上（16core CPU, 64G RAM, RTX 4090 24GB）
+# 网络: llm-02.localdomain / llm-02.tbd / 10.0.0.2 (100G IB)
 # 用法:
 #   docker compose -f docker-compose.comfyui.yml up -d
 #
@@ -28,22 +29,20 @@ services:
     restart: unless-stopped
     networks: [vidpipe_comfy]
     ports:
-      - "8188:8188"   # ComfyUI Web UI & API
+      - "0.0.0.0:8188:8188"   # ComfyUI Web UI & API，所有接口监听（含 IB 10.0.0.2）
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
-      # ComfyUI 监听所有接口（供 n8n 从 llm-01 远程调用）
+      # ComfyUI 进程内部也监听 0.0.0.0，供 llm-01 通过 IB/千兆 远程调用
       CLI_ARGS: "--listen 0.0.0.0 --port 8188"
     volumes:
-      # GGUF 模型文件（直接挂载到 ComfyUI models 目录）
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
       - ./comfyui-data/input:/opt/ComfyUI/input
       - ./comfyui-data/custom_nodes:/opt/ComfyUI/custom_nodes
-      # 宿主机本地 HuggingFace 缓存目录，共享已下载的模型
       - /home/xi/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
@@ -56,7 +55,7 @@ services:
           memory: 48g
         reservations:
           memory: 16g
-    shm_size: "8gb"  # LTX 2.3 多帧生成需要较大共享内存
+    shm_size: "8gb"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
       interval: 30s

@@ -1,5 +1,6 @@
 # docker-compose.vllm.yml
 # 运行在 llm-01 机器上
+# 网络: llm-01.localdomain / llm-01.tbd / 10.0.0.1 (100G IB)
 # 用法（与主服务合并启动）:
 #   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 # 或单独启动 vLLM:
@@ -16,7 +17,7 @@
 #   内置 transformers 5.5+，:latest 版本不识别 gemma4 架构
 #
 # 注意: vllm/vllm-openai 镜像 entrypoint 已经是 "vllm serve"
-#         command 里直接写模型名和参数，不要再写 serve
+#       command 里直接写模型名和参数，不要再写 serve
 
 version: "3.8"
 
@@ -31,7 +32,7 @@ services:
     restart: unless-stopped
     networks: [vidpipe]
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"   # vLLM OpenAI API，所有接口监听
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: all
