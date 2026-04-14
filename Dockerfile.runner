@@ -1,16 +1,10 @@
-# 继承官方 n8nio/runners 镜像（包含 launcher + JS runner + Python runner + uv）
-# 注意: 镜像版本必须与 docker-compose.yml 里 n8nio/n8n 版本一致
 FROM n8nio/runners:latest
 
 USER root
 
-# 用 uv 安装第三方 Python 包（runner 内置 uv，路径在 /opt/runners/task-runner-python）
-RUN cd /opt/runners/task-runner-python && \
-    uv pip install --system \
-        httpx requests beautifulsoup4 feedparser \
-        openai anthropic Pillow numpy pandas python-dotenv
-
-# 覆盖 allowlist 配置，放行上面安装的包
-COPY n8n-task-runners.json /etc/n8n-task-runners.json
+# 安装第三方包到官方 venv（runner 用的就是这个 venv 里的 Python）
+RUN /opt/runners/task-runner-python/.venv/bin/pip install \
+    httpx requests beautifulsoup4 feedparser \
+    openai anthropic Pillow numpy pandas python-dotenv
 
 USER runner
