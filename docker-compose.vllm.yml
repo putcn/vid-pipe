@@ -18,6 +18,11 @@
 #
 # 注意: vllm/vllm-openai 镜像 entrypoint 已经是 "vllm serve"
 #       command 里直接写模型名和参数，不要再写 serve
+#
+# 上下文窗口说明:
+#   max-model-len=32768 (~32K tokens)
+#   模型权重占用 ~18-20GB，KV cache 占用 ~2GB，总计 ~22GB，4090 安全。
+#   寙当前 vid-pipe 流程远未用到 2K tokens，但为将来批量生成/去重等扩展留足够余量。
 
 version: "3.8"
 
@@ -61,7 +66,7 @@ services:
       - --gpu-memory-utilization
       - "0.92"
       - --max-model-len
-      - "8192"
+      - "32768"
       - --max-num-seqs
       - "1"
       - --enable-auto-tool-choice
