@@ -22,35 +22,35 @@
       "typeVersion": 2,
       "position": [350, 300],
       "parameters": {
-        "language": "python",
-        "pythonCode": "import httpx, json\n\nWEIBO_HOT_URL = 'https://weibo.com/ajax/side/hotSearch'\ntopics = []\n\ntry:\n    r = httpx.get(WEIBO_HOT_URL, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})\n    data = r.json()\n    realtime = data.get('data', {}).get('realtime', [])[:10]\n    for item in realtime:\n        topics.append({\n            'source': 'weibo',\n            'keyword': item.get('word', ''),\n            'heat': item.get('num', 0),\n            'icon': item.get('icon_desc', '')\n        })\nexcept Exception as e:\n    try:\n        import feedparser\n        feed = feedparser.parse('https://top.baidu.com/board?platform=wise&sa=pcindex_entry')\n        for entry in feed.entries[:10]:\n            topics.append({'source': 'baidu', 'keyword': entry.title, 'heat': 0, 'icon': ''})\n    except:\n        topics.append({'source': 'fallback', 'keyword': 'AI人工智能', 'heat': 9999, 'icon': '爆'})\n\ntopics.sort(key=lambda x: x['heat'], reverse=True)\nselected = topics[0] if topics else {'keyword': 'AI最新进展', 'source': 'fallback', 'heat': 0, 'icon': ''}\n\nreturn [{'json': {'topics': topics, 'selected': selected}}]\n"
+        "language": "Python",
+        "pythonCode": "import httpx, json\n\nWEIBO_HOT_URL = 'https://weibo.com/ajax/side/hotSearch'\ntopics = []\n\ntry:\n    r = httpx.get(WEIBO_HOT_URL, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})\n    data = r.json()\n    realtime = data.get('data', {}).get('realtime', [])[:10]\n    for item in realtime:\n        topics.append({\n            'source': 'weibo',\n            'keyword': item.get('word', ''),\n            'heat': item.get('num', 0),\n            'icon': item.get('icon_desc', '')\n        })\nexcept Exception as e:\n    try:\n        import feedparser\n        feed = feedparser.parse('https://top.baidu.com/board?platform=wise&sa=pcindex_entry')\n        for entry in feed.entries[:10]:\n            topics.append({'source': 'baidu', 'keyword': entry.title, 'heat': 0, 'icon': ''})\n    except:\n        topics.append({'source': 'fallback', 'keyword': 'AI\u4eba\u5de5\u667a\u80fd', 'heat': 9999, 'icon': '\u7206'})\n\ntopics.sort(key=lambda x: x['heat'], reverse=True)\nselected = topics[0] if topics else {'keyword': 'AI\u6700\u65b0\u8fdb\u5c55', 'source': 'fallback', 'heat': 0, 'icon': ''}\n\nreturn [{'json': {'topics': topics, 'selected': selected}}]\n"
       }
     },
     {
       "id": "llm-1",
-      "name": "LLM文案生成",
+      "name": "LLM\u6587\u6848\u751f\u6210",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [600, 300],
       "parameters": {
-        "language": "python",
-        "pythonCode": "import httpx, os, json\n\nselected = _input.item.json['selected']\nkeyword  = selected['keyword']\nheat     = selected['heat']\n\nLLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://host.docker.internal:8000/v1')\nLLM_API_KEY  = os.environ.get('LLM_API_KEY',  'token-vidpipe')\nLLM_MODEL    = os.environ.get('LLM_MODEL',    'gemma-4-27b-it')\n\nsystem_prompt = '''你是一个专业的短视频文案创作者，擅长为抖音和小红书创作爆款内容。\n输出 JSON 格式，包含:\n- title: 视频标题（15字内，含emoji，吸引眼球）\n- caption: 视频正文（100-150字，口语化，有亮点，结尾有互动引导）\n- tags: 话题标签列表（8-12个，含热门话题和细分标签）\n- video_prompt: 给视频生成AI的英文提示词（描述视觉画面，竖版9:16，写实风格，包含动态、光线、镜头等细节）\n- negative_prompt: 英文负面提示词（描述不想要的画面质量和风格）\n- image_prompt: 封面图提示词（英文，竖版，高对比度）\n只输出JSON对象本身，不要包含任何markdown格式或代码块包裹。'''\n\nuser_prompt = f'热搜话题：{keyword}\\n热度值：{heat}\\n请为这个话题创作一套完整的短视频内容方案。'\n\nheaders = {\n    'Authorization': f'Bearer {LLM_API_KEY}',\n    'Content-Type': 'application/json'\n}\npayload = {\n    'model': LLM_MODEL,\n    'messages': [\n        {'role': 'system', 'content': system_prompt},\n        {'role': 'user',   'content': user_prompt}\n    ],\n    'temperature': 0.8,\n    'response_format': {'type': 'json_object'}\n}\n\nr = httpx.post(f'{LLM_BASE_URL}/chat/completions', json=payload, headers=headers, timeout=60)\nr.raise_for_status()\ncontent = r.json()['choices'][0]['message']['content'].strip()\nif content.startswith('```'):\n    content = content.split('\\n', 1)[-1].rsplit('```', 1)[0].strip()\ncopy = json.loads(content)\n\nreturn [{'json': {\n    'keyword':         keyword,\n    'title':           copy.get('title',           f'关于{keyword}你不知道的事'),\n    'caption':         copy.get('caption',         ''),\n    'tags':            copy.get('tags',             [keyword]),\n    'video_prompt':    copy.get('video_prompt',    f'cinematic short video about {keyword}, vertical 9:16'),\n    'negative_prompt': copy.get('negative_prompt', 'cartoon, childish, ugly, blurry, watermark, nsfw'),\n    'image_prompt':    copy.get('image_prompt',    f'social media cover for {keyword}'),\n    'selected':        selected\n}}]\n"
+        "language": "Python",
+        "pythonCode": "import httpx, os, json\n\nselected = _input.item.json['selected']\nkeyword  = selected['keyword']\nheat     = selected['heat']\n\nLLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://host.docker.internal:8000/v1')\nLLM_API_KEY  = os.environ.get('LLM_API_KEY',  'token-vidpipe')\nLLM_MODEL    = os.environ.get('LLM_MODEL',    'gemma-4-27b-it')\n\nsystem_prompt = '''\u4f60\u662f\u4e00\u4e2a\u4e13\u4e1a\u7684\u77ed\u89c6\u9891\u6587\u6848\u521b\u4f5c\u8005\uff0c\u64c5\u957f\u4e3a\u6296\u97f3\u548c\u5c0f\u7ea2\u4e66\u521b\u4f5c\u7206\u6b3e\u5185\u5bb9\u3002\n\u8f93\u51fa JSON \u683c\u5f0f\uff0c\u5305\u542b:\n- title: \u89c6\u9891\u6807\u9898\uff0815\u5b57\u5185\uff0c\u542bemoji\uff0c\u5438\u5f15\u773c\u7403\uff09\n- caption: \u89c6\u9891\u6b63\u6587\uff08100-150\u5b57\uff0c\u53e3\u8bed\u5316\uff0c\u6709\u4eae\u70b9\uff0c\u7ed3\u5c3e\u6709\u4e92\u52a8\u5f15\u5bfc\uff09\n- tags: \u8bdd\u9898\u6807\u7b7e\u5217\u8868\uff088-12\u4e2a\uff0c\u542b\u70ed\u95e8\u8bdd\u9898\u548c\u7ec6\u5206\u6807\u7b7e\uff09\n- video_prompt: \u7ed9\u89c6\u9891\u751f\u6210AI\u7684\u82f1\u6587\u63d0\u793a\u8bcd\uff08\u63cf\u8ff0\u89c6\u89c9\u753b\u9762\uff0c\u7ad6\u72489:16\uff0c\u5199\u5b9e\u98ce\u683c\uff0c\u5305\u542b\u52a8\u6001\u3001\u5149\u7ebf\u3001\u955c\u5934\u7b49\u7ec6\u8282\uff09\n- negative_prompt: \u82f1\u6587\u8d1f\u9762\u63d0\u793a\u8bcd\uff08\u63cf\u8ff0\u4e0d\u60f3\u8981\u7684\u753b\u9762\u8d28\u91cf\u548c\u98ce\u683c\uff09\n- image_prompt: \u5c01\u9762\u56fe\u63d0\u793a\u8bcd\uff08\u82f1\u6587\uff0c\u7ad6\u7248\uff0c\u9ad8\u5bf9\u6bd4\u5ea6\uff09\n\u53ea\u8f93\u51faJSON\u5bf9\u8c61\u672c\u8eab\uff0c\u4e0d\u8981\u5305\u542b\u4efb\u4f55markdown\u683c\u5f0f\u6216\u4ee3\u7801\u5757\u5305\u88f9\u3002'''\n\nuser_prompt = f'\u70ed\u641c\u8bdd\u9898\uff1a{keyword}\\n\u70ed\u5ea6\u503c\uff1a{heat}\\n\u8bf7\u4e3a\u8fd9\u4e2a\u8bdd\u9898\u521b\u4f5c\u4e00\u5957\u5b8c\u6574\u7684\u77ed\u89c6\u9891\u5185\u5bb9\u65b9\u6848\u3002'\n\nheaders = {\n    'Authorization': f'Bearer {LLM_API_KEY}',\n    'Content-Type': 'application/json'\n}\npayload = {\n    'model': LLM_MODEL,\n    'messages': [\n        {'role': 'system', 'content': system_prompt},\n        {'role': 'user',   'content': user_prompt}\n    ],\n    'temperature': 0.8,\n    'response_format': {'type': 'json_object'}\n}\n\nr = httpx.post(f'{LLM_BASE_URL}/chat/completions', json=payload, headers=headers, timeout=60)\nr.raise_for_status()\ncontent = r.json()['choices'][0]['message']['content'].strip()\nif content.startswith('```'):\n    content = content.split('\\n', 1)[-1].rsplit('```', 1)[0].strip()\ncopy = json.loads(content)\n\nreturn [{'json': {\n    'keyword':         keyword,\n    'title':           copy.get('title',           f'\u5173\u4e8e{keyword}\u4f60\u4e0d\u77e5\u9053\u7684\u4e8b'),\n    'caption':         copy.get('caption',         ''),\n    'tags':            copy.get('tags',             [keyword]),\n    'video_prompt':    copy.get('video_prompt',    f'cinematic short video about {keyword}, vertical 9:16'),\n    'negative_prompt': copy.get('negative_prompt', 'cartoon, childish, ugly, blurry, watermark, nsfw'),\n    'image_prompt':    copy.get('image_prompt',    f'social media cover for {keyword}'),\n    'selected':        selected\n}}]\n"
       }
     },
     {
       "id": "comfy-1",
-      "name": "ComfyUI LTX2.3 视频生成",
+      "name": "ComfyUI LTX2.3 \u89c6\u9891\u751f\u6210",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [850, 300],
       "parameters": {
-        "language": "python",
-        "pythonCode": "import httpx, os, json, time, uuid\nfrom pathlib import Path\nimport copy as _copy\n\nCOMFYUI_URL   = os.environ.get('COMFYUI_URL',        'http://host.docker.internal:8188')\nVIDEO_DIR     = os.environ.get('SAU_VIDEO_DIR',      '/data/videos')\nMAX_WAIT_SEC  = int(os.environ.get('COMFY_TIMEOUT_SEC', '180'))\nMAX_RETRIES   = int(os.environ.get('COMFY_MAX_RETRIES', '2'))\nPOLL_INTERVAL = 5\n\nPath(VIDEO_DIR).mkdir(parents=True, exist_ok=True)\n\nvideo_prompt    = _input.item.json['video_prompt']\nnegative_prompt = _input.item.json.get('negative_prompt', 'cartoon, childish, ugly, blurry, watermark, nsfw')\ntitle           = _input.item.json['title']\n\nCOMFY_WORKFLOW_TPL = {\n    '1':  {'class_type': 'UnetLoaderGGUF',\n           'inputs': {'unet_name': 'distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf'}},\n    '2':  {'class_type': 'VAELoader',\n           'inputs': {'vae_name': 'ltx-2.3-22b-dev_video_vae.safetensors'}},\n    '3':  {'class_type': 'CLIPLoaderGGUF',\n           'inputs': {'clip_name': 'gemma-3-12b-it-q4_k_m.gguf', 'type': 'ltxv'}},\n    '4':  {'class_type': 'CLIPTextEncode',\n           'inputs': {'clip': ['3', 0], 'text': video_prompt}},\n    '5':  {'class_type': 'CLIPTextEncode',\n           'inputs': {'clip': ['3', 0], 'text': negative_prompt}},\n    '6':  {'class_type': 'LTXVConditioning',\n           'inputs': {'positive': ['4', 0], 'negative': ['5', 0], 'frame_rate': 24.0}},\n    '7':  {'class_type': 'EmptyLTXVLatentVideo',\n           'inputs': {'width': 768, 'height': 1280, 'length': 97, 'batch_size': 1}},\n    '8':  {'class_type': 'ManualSigmas',\n           'inputs': {'sigmas': '1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0'}},\n    '9':  {'class_type': 'KSamplerSelect',\n           'inputs': {'sampler_name': 'euler_ancestral_cfg_pp'}},\n    '10': {'class_type': 'RandomNoise',\n           'inputs': {'noise_seed': None}},\n    '11': {'class_type': 'CFGGuider',\n           'inputs': {'model': ['1', 0], 'positive': ['6', 0], 'negative': ['6', 1], 'cfg': 1.0}},\n    '12': {'class_type': 'SamplerCustomAdvanced',\n           'inputs': {'noise': ['10', 0], 'guider': ['11', 0],\n                      'sampler': ['9', 0], 'sigmas': ['8', 0],\n                      'latent_image': ['7', 0]}},\n    '13': {'class_type': 'VAEDecode',\n           'inputs': {'samples': ['12', 0], 'vae': ['2', 0]}},\n    '14': {'class_type': 'VHS_VideoCombine',\n           'inputs': {'images': ['13', 0], 'frame_rate': 24,\n                      'loop_count': 0, 'filename_prefix': 'vidpipe',\n                      'format': 'video/mp4', 'pingpong': False, 'save_output': True}}\n}\n\ndef cancel_comfy_job(prompt_id):\n    try: httpx.post(f'{COMFYUI_URL}/interrupt', timeout=5)\n    except: pass\n    try: httpx.post(f'{COMFYUI_URL}/queue', json={'delete': [prompt_id]}, timeout=5)\n    except: pass\n\ndef submit_and_wait(workflow, client_id):\n    r = httpx.post(f'{COMFYUI_URL}/prompt',\n                   json={'prompt': workflow, 'client_id': client_id}, timeout=30)\n    r.raise_for_status()\n    prompt_id = r.json()['prompt_id']\n    deadline = time.time() + MAX_WAIT_SEC\n    while time.time() < deadline:\n        time.sleep(POLL_INTERVAL)\n        try:\n            history = httpx.get(f'{COMFYUI_URL}/history/{prompt_id}', timeout=10).json()\n        except:\n            continue\n        if prompt_id not in history:\n            continue\n        for node_id, node_output in history[prompt_id].get('outputs', {}).items():\n            for key in ('gifs', 'videos', 'images'):\n                if key not in node_output:\n                    continue\n                file_info = node_output[key][0]\n                params = {'filename': file_info['filename'],\n                          'subfolder': file_info.get('subfolder', ''), 'type': 'output'}\n                file_resp = httpx.get(f'{COMFYUI_URL}/view', params=params, timeout=60)\n                safe_title = ''.join(c for c in title if c.isalnum() or c in '_ ')[:30]\n                ext = 'mp4' if key in ('gifs', 'videos') else 'png'\n                output_file = f'{VIDEO_DIR}/{safe_title}_{prompt_id[:8]}.{ext}'\n                with open(output_file, 'wb') as f:\n                    f.write(file_resp.content)\n                return output_file, prompt_id\n    cancel_comfy_job(prompt_id)\n    raise TimeoutError(f'ComfyUI 超时 ({MAX_WAIT_SEC}s), prompt_id={prompt_id}')\n\nlast_error = None\noutput_file = None\nprompt_id   = None\ninput_json  = _input.item.json\n\nfor attempt in range(1, MAX_RETRIES + 1):\n    client_id = str(uuid.uuid4())\n    workflow  = _copy.deepcopy(COMFY_WORKFLOW_TPL)\n    workflow['10']['inputs']['noise_seed'] = int(time.time() * 1000) % 2147483647\n    try:\n        output_file, prompt_id = submit_and_wait(workflow, client_id)\n        break\n    except TimeoutError as e:\n        last_error = e\n        time.sleep(30 * attempt)\n    except Exception as e:\n        last_error = e\n        time.sleep(15 * attempt)\n\nif not output_file:\n    raise Exception(f'ComfyUI 重试 {MAX_RETRIES} 次仍失败: {last_error}')\n\nreturn [{'json': {**input_json, 'video_path': output_file, 'prompt_id': prompt_id}}]\n"
+        "language": "Python",
+        "pythonCode": "import httpx, os, json, time, uuid\nfrom pathlib import Path\nimport copy as _copy\n\nCOMFYUI_URL   = os.environ.get('COMFYUI_URL',        'http://host.docker.internal:8188')\nVIDEO_DIR     = os.environ.get('SAU_VIDEO_DIR',      '/data/videos')\nMAX_WAIT_SEC  = int(os.environ.get('COMFY_TIMEOUT_SEC', '180'))\nMAX_RETRIES   = int(os.environ.get('COMFY_MAX_RETRIES', '2'))\nPOLL_INTERVAL = 5\n\nPath(VIDEO_DIR).mkdir(parents=True, exist_ok=True)\n\nvideo_prompt    = _input.item.json['video_prompt']\nnegative_prompt = _input.item.json.get('negative_prompt', 'cartoon, childish, ugly, blurry, watermark, nsfw')\ntitle           = _input.item.json['title']\n\nCOMFY_WORKFLOW_TPL = {\n    '1':  {'class_type': 'UnetLoaderGGUF',\n           'inputs': {'unet_name': 'distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf'}},\n    '2':  {'class_type': 'VAELoader',\n           'inputs': {'vae_name': 'ltx-2.3-22b-dev_video_vae.safetensors'}},\n    '3':  {'class_type': 'CLIPLoaderGGUF',\n           'inputs': {'clip_name': 'gemma-3-12b-it-q4_k_m.gguf', 'type': 'ltxv'}},\n    '4':  {'class_type': 'CLIPTextEncode',\n           'inputs': {'clip': ['3', 0], 'text': video_prompt}},\n    '5':  {'class_type': 'CLIPTextEncode',\n           'inputs': {'clip': ['3', 0], 'text': negative_prompt}},\n    '6':  {'class_type': 'LTXVConditioning',\n           'inputs': {'positive': ['4', 0], 'negative': ['5', 0], 'frame_rate': 24.0}},\n    '7':  {'class_type': 'EmptyLTXVLatentVideo',\n           'inputs': {'width': 768, 'height': 1280, 'length': 97, 'batch_size': 1}},\n    '8':  {'class_type': 'ManualSigmas',\n           'inputs': {'sigmas': '1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0'}},\n    '9':  {'class_type': 'KSamplerSelect',\n           'inputs': {'sampler_name': 'euler_ancestral_cfg_pp'}},\n    '10': {'class_type': 'RandomNoise',\n           'inputs': {'noise_seed': None}},\n    '11': {'class_type': 'CFGGuider',\n           'inputs': {'model': ['1', 0], 'positive': ['6', 0], 'negative': ['6', 1], 'cfg': 1.0}},\n    '12': {'class_type': 'SamplerCustomAdvanced',\n           'inputs': {'noise': ['10', 0], 'guider': ['11', 0],\n                      'sampler': ['9', 0], 'sigmas': ['8', 0],\n                      'latent_image': ['7', 0]}},\n    '13': {'class_type': 'VAEDecode',\n           'inputs': {'samples': ['12', 0], 'vae': ['2', 0]}},\n    '14': {'class_type': 'VHS_VideoCombine',\n           'inputs': {'images': ['13', 0], 'frame_rate': 24,\n                      'loop_count': 0, 'filename_prefix': 'vidpipe',\n                      'format': 'video/mp4', 'pingpong': False, 'save_output': True}}\n}\n\ndef cancel_comfy_job(prompt_id):\n    try: httpx.post(f'{COMFYUI_URL}/interrupt', timeout=5)\n    except: pass\n    try: httpx.post(f'{COMFYUI_URL}/queue', json={'delete': [prompt_id]}, timeout=5)\n    except: pass\n\ndef submit_and_wait(workflow, client_id):\n    r = httpx.post(f'{COMFYUI_URL}/prompt',\n                   json={'prompt': workflow, 'client_id': client_id}, timeout=30)\n    r.raise_for_status()\n    prompt_id = r.json()['prompt_id']\n    deadline = time.time() + MAX_WAIT_SEC\n    while time.time() < deadline:\n        time.sleep(POLL_INTERVAL)\n        try:\n            history = httpx.get(f'{COMFYUI_URL}/history/{prompt_id}', timeout=10).json()\n        except:\n            continue\n        if prompt_id not in history:\n            continue\n        for node_id, node_output in history[prompt_id].get('outputs', {}).items():\n            for key in ('gifs', 'videos', 'images'):\n                if key not in node_output:\n                    continue\n                file_info = node_output[key][0]\n                params = {'filename': file_info['filename'],\n                          'subfolder': file_info.get('subfolder', ''), 'type': 'output'}\n                file_resp = httpx.get(f'{COMFYUI_URL}/view', params=params, timeout=60)\n                safe_title = ''.join(c for c in title if c.isalnum() or c in '_ ')[:30]\n                ext = 'mp4' if key in ('gifs', 'videos') else 'png'\n                output_file = f'{VIDEO_DIR}/{safe_title}_{prompt_id[:8]}.{ext}'\n                with open(output_file, 'wb') as f:\n                    f.write(file_resp.content)\n                return output_file, prompt_id\n    cancel_comfy_job(prompt_id)\n    raise TimeoutError(f'ComfyUI \u8d85\u65f6 ({MAX_WAIT_SEC}s), prompt_id={prompt_id}')\n\nlast_error = None\noutput_file = None\nprompt_id   = None\ninput_json  = _input.item.json\n\nfor attempt in range(1, MAX_RETRIES + 1):\n    client_id = str(uuid.uuid4())\n    workflow  = _copy.deepcopy(COMFY_WORKFLOW_TPL)\n    workflow['10']['inputs']['noise_seed'] = int(time.time() * 1000) % 2147483647\n    try:\n        output_file, prompt_id = submit_and_wait(workflow, client_id)\n        break\n    except TimeoutError as e:\n        last_error = e\n        time.sleep(30 * attempt)\n    except Exception as e:\n        last_error = e\n        time.sleep(15 * attempt)\n\nif not output_file:\n    raise Exception(f'ComfyUI \u91cd\u8bd5 {MAX_RETRIES} \u6b21\u4ecd\u5931\u8d25: {last_error}')\n\nreturn [{'json': {**input_json, 'video_path': output_file, 'prompt_id': prompt_id}}]\n"
       }
     },
     {
       "id": "wait-1",
-      "name": "人工审核",
+      "name": "\u4eba\u5de5\u5ba1\u6838",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [1100, 300],
@@ -61,29 +61,29 @@
     },
     {
       "id": "douyin-1",
-      "name": "发布到抖音",
+      "name": "\u53d1\u5e03\u5230\u6296\u97f3",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1350, 200],
       "parameters": {
-        "language": "python",
+        "language": "Python",
         "pythonCode": "import httpx, os\n\nSAU_API_URL = os.environ.get('SAU_API_URL', 'http://sau-backend:8080')\ninput_json  = _input.item.json\npayload = {\n    'video_path':   input_json['video_path'],\n    'title':        input_json['title'],\n    'caption':      input_json['caption'],\n    'tags':         input_json['tags'],\n    'publish_type': 0\n}\nr = httpx.post(f'{SAU_API_URL}/upload/douyin', json=payload, timeout=300)\nr.raise_for_status()\nreturn [{'json': {'douyin_result': r.json(), **input_json}}]\n"
       }
     },
     {
       "id": "xhs-1",
-      "name": "发布到小红书",
+      "name": "\u53d1\u5e03\u5230\u5c0f\u7ea2\u4e66",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1350, 400],
       "parameters": {
-        "language": "python",
+        "language": "Python",
         "pythonCode": "import httpx, os\n\nSAU_API_URL = os.environ.get('SAU_API_URL', 'http://sau-backend:8080')\ninput_json  = _input.item.json\npayload = {\n    'video_path':   input_json['video_path'],\n    'title':        input_json['title'],\n    'caption':      input_json['caption'],\n    'tags':         input_json['tags'],\n    'publish_type': 0\n}\nr = httpx.post(f'{SAU_API_URL}/upload/xhs', json=payload, timeout=300)\nr.raise_for_status()\nreturn [{'json': {'xhs_result': r.json(), **input_json}}]\n"
       }
     },
     {
       "id": "merge-1",
-      "name": "结束汇总",
+      "name": "\u7ed3\u675f\u6c47\u603b",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [1600, 300],
@@ -94,26 +94,26 @@
     }
   ],
   "connections": {
-    "定时触发(每6小时)": {
-      "main": [[{"node": "热点抓取", "type": "main", "index": 0}]]
+    "\u5b9a\u65f6\u89e6\u53d1(\u6bcf6\u5c0f\u65f6)": {
+      "main": [[{"node": "\u70ed\u70b9\u6293\u53d6", "type": "main", "index": 0}]]
     },
-    "热点抓取": {
-      "main": [[{"node": "LLM文案生成", "type": "main", "index": 0}]]
+    "\u70ed\u70b9\u6293\u53d6": {
+      "main": [[{"node": "LLM\u6587\u6848\u751f\u6210", "type": "main", "index": 0}]]
     },
-    "LLM文案生成": {
-      "main": [[{"node": "ComfyUI LTX2.3 视频生成", "type": "main", "index": 0}]]
+    "LLM\u6587\u6848\u751f\u6210": {
+      "main": [[{"node": "ComfyUI LTX2.3 \u89c6\u9891\u751f\u6210", "type": "main", "index": 0}]]
     },
-    "ComfyUI LTX2.3 视频生成": {
-      "main": [[{"node": "人工审核", "type": "main", "index": 0}]]
+    "ComfyUI LTX2.3 \u89c6\u9891\u751f\u6210": {
+      "main": [[{"node": "\u4eba\u5de5\u5ba1\u6838", "type": "main", "index": 0}]]
     },
-    "人工审核": {
+    "\u4eba\u5de5\u5ba1\u6838": {
       "main": [
-        [{"node": "发布到抖音",  "type": "main", "index": 0}],
-        [{"node": "发布到小红书", "type": "main", "index": 0}]
+        [{"node": "\u53d1\u5e03\u5230\u6296\u97f3",  "type": "main", "index": 0}],
+        [{"node": "\u53d1\u5e03\u5230\u5c0f\u7ea2\u4e66", "type": "main", "index": 0}]
       ]
     },
-    "发布到抖音":  {"main": [[{"node": "结束汇总", "type": "main", "index": 0}]]},
-    "发布到小红书": {"main": [[{"node": "结束汇总", "type": "main", "index": 1}]]}
+    "\u53d1\u5e03\u5230\u6296\u97f3":  {"main": [[{"node": "\u7ed3\u675f\u6c47\u603b", "type": "main", "index": 0}]]},
+    "\u53d1\u5e03\u5230\u5c0f\u7ea2\u4e66": {"main": [[{"node": "\u7ed3\u675f\u6c47\u603b", "type": "main", "index": 1}]]}
   },
   "settings": {
     "executionOrder": "v1"
