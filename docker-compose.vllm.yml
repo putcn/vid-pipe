@@ -7,9 +7,6 @@
 
 version: "3.8"
 
-volumes:
-  hf_cache:   # HuggingFace 模型缓存，持久化避免重复下载
-
 networks:
   vidpipe:
     external: true  # 复用主 compose 已创建的网络
@@ -30,9 +27,8 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       VLLM_NO_USAGE_STATS: "1"
     volumes:
-      # 持久化模型缓存到本地 volume（重建容器不重新下载）
-      # 如需指定宿主路径，改为: - /data/models:/root/.cache/huggingface
-      - hf_cache:/root/.cache/huggingface
+      # 宿主机本地 HuggingFace 缓存目录，避免重复下载
+      - /home/xi/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
         reservations:
@@ -46,7 +42,7 @@ services:
       --quantization bitsandbytes
       --load-format bitsandbytes
       --bnb-quantization-type nf4
-      --served-model-name gemma4
+      --served-model-name gemma-4-27b-it
       --host 0.0.0.0
       --port 8000
       --gpu-memory-utilization 0.92
