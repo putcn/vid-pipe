@@ -1,6 +1,6 @@
 # VidPipe — 热点→视频→抖音/小红书 全自动流水线
 
-自动抓取微博/百度热搜，用 LLM 生成文案和提示词，ComfyUI + LTX-Video 2.3 Distilled GGUF 生成竖版短视频，人工审核后自动发布到抖音和小红书。
+自动抓取微博/百度热搜，用 LLM 生成文案和提示词，ComfyUI + LTX-Video 2.3 Distilled GGUF 生成紖版短视频，人工审核后自动发布到抖音和小红书。
 
 ## 架构概览
 
@@ -11,21 +11,50 @@
 │  ├── n8n-runner          Python 执行器         │
 │  ├── postgres     :5432  工作流状态存储         │
 │  ├── sau-backend  :8080  抖音/小红书发布        │
-│  └── vLLM         :8000  Gemma 4 27B IT       │
-└──────────────────┬───────────────────────────┘
-                   │ HTTP API
-┌──────────────────▼───────────────────────────┐
+│  └── vLLM         :8000  Gemma 4 26B A4B IT    │
+└─────────────────┬───────────────────────────┘
+                   │ HTTP API (100G IB: 10.0.0.x)
+┌─────────────────┴───────────────────────────┐
 │  llm-02（视频生成节点）                         │
 │  └── ComfyUI      :8188  LTX-Video 2.3 生成   │
 └──────────────────────────────────────────────┘
 ```
+
+## 网络拓扑
+
+| 机器 | 无线 | 千兆有线 | 100G IB |
+|---|---|---|---|
+| llm-01 | `llm-01.localdomain` | `llm-01.tbd` | `10.0.0.1` |
+| llm-02 | `llm-02.localdomain` | `llm-02.tbd` | `10.0.0.2` |
+
+- n8n → vLLM：同机，通过 `host.docker.internal:8000`
+- n8n → ComfyUI：跨机，默认走 IB（`10.0.0.2:8188`），延迟最低、视频文件传输最快
+- sau-backend 登录：远程控制 Mac/Windows Chrome（详见下文）
+
+## 端口占用一览
+
+### llm-01
+
+| 端口 | 服务 | 对外暗口 | 说明 |
+|---|---|---|---|
+| 5678 | n8n | 是 | Web UI + Webhook |
+| 8000 | vLLM | 是 | OpenAI 兼容 API |
+| 8080 | sau-backend | 否（Docker 内网） | 抖音/小红书发布 |
+| 5432 | postgres | 否（Docker 内网） | n8n 状态存储 |
+| 5679 | n8n runner | 否（Docker 内网） | Runner 内部通信 |
+
+### llm-02
+
+| 端口 | 服务 | 对外暗口 | 说明 |
+|---|---|---|---|
+| 8188 | ComfyUI | 是 | Web UI + API |
 
 ## 节点配置
 
 | 服务 | 机器 | 配置 | Compose 文件 |
 |---|---|---|---|
 | n8n + postgres + sau | llm-01 | 任意 | `docker-compose.yml` |
-| vLLM (Gemma 4 27B) | llm-01 | RTX 4090 24GB | `docker-compose.vllm.yml` |
+| vLLM (Gemma 4 26B A4B) | llm-01 | RTX 4090 24GB | `docker-compose.vllm.yml` |
 | ComfyUI (LTX 2.3 GGUF) | llm-02 | 16core / 64G / RTX 4090 | `docker-compose.comfyui.yml` |
 
 ## 快速开始
@@ -45,8 +74,7 @@
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填写 HF_TOKEN、数据库密码、llm-01/llm-02 的实际 IP 或主机名
-vim .env
+vim .env   # 填写 HF_TOKEN、数据库密码、SAU_CDP_CLIENTS 等
 ```
 
 ### 2. llm-02：准备 LTX 2.3 GGUF 模型文件
@@ -58,7 +86,7 @@ vim .env
 mkdir -p ./comfyui-data/models/{unet,text_encoders,vae,loras,custom_nodes}
 mkdir -p ./comfyui-data/{output,input,custom_nodes}
 
-# ── 主模型：LTX-2.3 Distilled GGUF Q4_K_M（约 15.1GB，放 unet/ 目录）──
+# ── 主模型：LTX-2.3 Distilled GGUF Q4_K_M（约 15.1GB）──
 hf download unsloth/LTX-2.3-GGUF \
   --include "distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf" \
   --local-dir ./comfyui-data/models/unet/
@@ -95,7 +123,7 @@ docker network create vidpipe 2>/dev/null || true
 # 启动 n8n + postgres + sau-backend
 docker compose -f docker-compose.yml up -d
 
-# 启动 vLLM（首次启动会从 HuggingFace 下载 Gemma 4，约 15GB）
+# 启动 vLLM（首次启动会从 HuggingFace 下载 Gemma 4 AWQ，约 15GB）
 docker compose -f docker-compose.vllm.yml up -d
 
 # 查看 Gemma 4 加载进度
@@ -106,9 +134,45 @@ curl http://localhost:8000/health
 # 返回 {"status":"ok"} 即可
 ```
 
-### 4. 导入 n8n 工作流
+### 4. 发布平台登录（首次使用时执行一次）
 
-1. 打开 `http://llm-01:5678`
+sau-backend 需要真实浏览器扫码登录抖音/小红书。llm-01 是无头服务器，默认利用 **CDP 远程控制** 你 Mac 或 Windows 上已安装的 Chrome。
+
+**第一步：在 Mac 或 Windows 上启动 Chrome 开放远程调试**
+
+```bash
+# Mac
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=0.0.0.0 \
+  --no-first-run --no-default-browser-check
+```
+
+```powershell
+# Windows PowerShell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --remote-debugging-address=0.0.0.0 `
+  --no-first-run --no-default-browser-check
+```
+
+**第二步：在 llm-01 上触发登录**（替换成你 Mac/Windows 的实际 IP）
+
+```bash
+# 抖音登录
+curl -X POST "http://localhost:8080/cookie/login/douyin?cdp_url=http://192.168.1.100:9222"
+
+# 小红书登录
+curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.100:9222"
+```
+
+Playwright 会远程控制你权机的 Chrome 弹出登录页，扫码/手机登录后 cookie 自动保存到 llm-01，后续发布无需再登录。
+
+> 如果有多台设备，在 `.env` 里配置 `SAU_CDP_CLIENTS=http://ip1:9222,http://ip2:9222`，用 `GET /clients` 查看哪台在线。
+
+### 5. 导入 n8n 工作流
+
+1. 打开 `http://llm-01.localdomain:5678`
 2. 进入 **Workflows → Import from File**
 3. 选择 `workflow.json`
 4. 在 **Settings** 里确认环境变量 `LLM_BASE_URL`、`LLM_MODEL`、`COMFYUI_URL` 已注入
@@ -119,7 +183,7 @@ curl http://localhost:8000/health
 |---|---|---|
 | 模型 | `ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | 15.1GB，4090 显存充裕，无需 offload |
 | 加载节点 | `UnetLoaderGGUF`（ComfyUI-GGUF 插件） | 标准 CheckpointLoader 不支持 GGUF |
-| 分辨率 | 768×1280 (9:16) | 竖版，4090 全速运行 |
+| 分辨率 | 768×1280 (9:16) | 絖版，4090 全速运行 |
 | 帧数 | 97 帧 (≈4s @24fps) | 超过 121 帧质量下降 |
 | Steps | 8–15 | Distilled 版步数少，约 1min/条 |
 | CFG | 1.0 | Distilled 模型不需要高 CFG |
@@ -148,7 +212,10 @@ curl http://localhost:8000/health
 在 system prompt 末尾加：`只输出 JSON 对象本身，不要包含任何 markdown 格式或代码块包裹。`（workflow.json 中已内置）
 
 **n8n 无法访问 llm-02 的 ComfyUI**  
-检查 `.env` 里 `COMFYUI_URL` 是否填了 llm-02 的实际 IP，确认防火墙放行 8188 端口。
+检查 `.env` 里 `COMFYUI_URL` 是否填了 `10.0.0.2:8188`（IB）或 `llm-02.tbd:8188`（千兆），确认防火墙放行 8188 端口。
+
+**sau-backend 登录时 Chrome 没有弹出**  
+确认 Mac/Windows 上 Chrome 已开启 `--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0`，并确认 llm-01 可以访问到该 IP 的 9222 端口。
 
 **下载 Lightricks/LTX-Video 或 Lightricks/LTX-2.3 找不到 GGUF 文件**  
 GGUF 量化版由 unsloth 维护，repo 是 `unsloth/LTX-2.3-GGUF`，不在 Lightricks 官方 repo 内。
