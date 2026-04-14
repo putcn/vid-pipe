@@ -43,19 +43,28 @@ services:
               count: 1
               capabilities: [gpu]
     shm_size: "2gb"  # vLLM 张量传递需要共享内存，默认 64MB 会报错
-    # 注意: 新版 vLLM 中 model 必须作为 positional argument 放在最前面
-    command: >
-      serve cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
-      --quantization awq
-      --served-model-name gemma-4-27b-it
-      --host 0.0.0.0
-      --port 8000
-      --gpu-memory-utilization 0.92
-      --max-model-len 8192
-      --max-num-seqs 1
-      --enable-auto-tool-choice
-      --tool-call-parser gemma4
-      --reasoning-parser gemma4
+    command:
+      - serve
+      - cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
+      - --quantization
+      - awq
+      - --served-model-name
+      - gemma-4-27b-it
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --gpu-memory-utilization
+      - "0.92"
+      - --max-model-len
+      - "8192"
+      - --max-num-seqs
+      - "1"
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - gemma4
+      - --reasoning-parser
+      - gemma4
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
