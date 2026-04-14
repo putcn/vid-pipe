@@ -2,6 +2,7 @@
   "task-runners": [
     {
       "runner-type": "javascript",
+      "health-check-server-port": 9091,
       "env-overrides": {
         "NODE_FUNCTION_ALLOW_BUILTIN": "*",
         "NODE_FUNCTION_ALLOW_EXTERNAL": "*"
@@ -9,6 +10,7 @@
     },
     {
       "runner-type": "python",
+      "health-check-server-port": 9092,
       "env-overrides": {
         "N8N_RUNNERS_STDLIB_ALLOW": "json,os,re,time,uuid,pathlib,urllib,urllib.request,urllib.parse,urllib.error,http,http.client,copy,datetime,math,random,hashlib,base64,io,collections,itertools,functools,string,typing",
         "N8N_RUNNERS_EXTERNAL_ALLOW": "httpx,requests,beautifulsoup4,bs4,feedparser,openai,anthropic,PIL,Pillow,numpy,pandas,python-dotenv,dotenv"
