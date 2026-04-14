@@ -69,6 +69,8 @@ services:
       dockerfile: Dockerfile.runner
     restart: unless-stopped
     networks: [vidpipe]
+    user: root
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/videos /data/cookies && chmod 777 /data/videos /data/cookies && exec su runner -s /bin/sh -c '/usr/local/bin/launcher'"]
     environment:
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
