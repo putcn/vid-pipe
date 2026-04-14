@@ -1,12 +1,9 @@
-# n8n v2 的镜像是 distroless Alpine，移除了 apk 和 apt-get
-# 解决方法: multi-stage build
-
 # ── Stage 1: builder ──
 FROM alpine:3.20 AS builder
 
 RUN apk add --no-cache \
     python3 py3-pip python3-dev \
-    build-base ffmpeg curl
+    build-base
 
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -20,13 +17,13 @@ FROM docker.n8n.io/n8nio/n8n:latest
 
 USER root
 
-COPY --from=builder /usr/bin/python3 /usr/bin/python3
-COPY --from=builder /usr/lib/python3* /usr/lib/python3/
-COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
-COPY --from=builder /usr/bin/ffprobe /usr/bin/ffprobe
+# 直接在 final stage 装 alpine 原生 python3（含完整标准库，路径正确）
+# 再把 venv（第三方包）从 builder 复制过来，路径精确无通配符
+RUN apk add --no-cache python3 ffmpeg
 
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PATH="/opt/venv/bin:/usr/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 USER node
