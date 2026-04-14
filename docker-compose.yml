@@ -48,7 +48,6 @@ services:
       N8N_RUNNERS_ENABLED: "true"
       N8N_RUNNERS_MODE: external
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
-      # 必须设置，否则 broker 只监听 127.0.0.1，runner 容器无法连接
       N8N_RUNNERS_BROKER_LISTEN_ADDRESS: "0.0.0.0"
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
@@ -71,9 +70,16 @@ services:
     restart: unless-stopped
     networks: [vidpipe]
     environment:
-      # 修正: 旧版 N8N_RUNNERS_SERVER_URI 已废弃，新版正确名称如下
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      SAU_VIDEO_DIR: /data/videos
+      COMFYUI_URL: ${COMFYUI_URL}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      SAU_API_URL: http://sau-backend:8080
+    volumes:
+      - shared_data:/data
     depends_on:
       - n8n
     extra_hosts:
