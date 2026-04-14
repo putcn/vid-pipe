@@ -4,6 +4,12 @@
 #   docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 # 或单独启动 vLLM:
 #   docker compose -f docker-compose.vllm.yml up -d
+#
+# 模型说明:
+#   cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
+#   - Gemma 4 MoE 版本，激活参数只有 ~4B，单张 4090 24GB 可跑
+#   - AWQ 4bit 量化，实际占用显存 ~10-14GB，推理速度 ~53 tok/s
+#   - 社区已验证 vLLM 可跑，高于 bitsandbytes（后者 vLLM 即将废弃）
 
 version: "3.8"
 
@@ -38,9 +44,8 @@ services:
               capabilities: [gpu]
     shm_size: "2gb"  # vLLM 张量传递需要共享内存，默认 64MB 会报错
     command: >
-      --model google/gemma-4-27b-it
-      --quantization bitsandbytes
-      --load-format bitsandbytes
+      --model cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
+      --quantization awq
       --served-model-name gemma-4-27b-it
       --host 0.0.0.0
       --port 8000
