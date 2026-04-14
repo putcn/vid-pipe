@@ -46,15 +46,14 @@ services:
       - /home/xi/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
         limits:
           memory: 48g
         reservations:
           memory: 16g
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     shm_size: "8gb"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
