@@ -2,7 +2,7 @@
   "task-runners": [
     {
       "runner-type": "javascript",
-      "workdir": "/opt/runners/task-runner-js",
+      "workdir": "/opt/runners/task-runner-javascript",
       "health-check-server-port": "9091",
       "env-overrides": {
         "NODE_FUNCTION_ALLOW_BUILTIN": "*",
