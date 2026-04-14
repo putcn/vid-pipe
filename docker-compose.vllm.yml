@@ -9,10 +9,13 @@
 #   cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
 #   - Gemma 4 MoE 版本，激活参数只有 ~4B，单张 4090 24GB 可跑
 #   - AWQ 4bit 量化，实际占用显存 ~10-14GB，推理速度 ~53 tok/s
-#   - 社区已验证 vLLM 可跑
+#
+# 镜像说明:
+#   vllm/vllm-openai:gemma4 是 vLLM 官方专为 Gemma 4 打的镜像
+#   内置 transformers 5.5+，:latest 版本 transformers 太旧不识别 gemma4 架构
 #
 # 注意: vllm/vllm-openai 镜像的 entrypoint 已经是 "vllm serve"
-#         所以 command 里直接写模型名和参数，不要再写 serve
+#         command 里直接写模型名和参数，不要再写 serve
 
 version: "3.8"
 
@@ -22,7 +25,7 @@ networks:
 
 services:
   vllm:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:gemma4
     container_name: vidpipe-vllm
     restart: unless-stopped
     networks: [vidpipe]
