@@ -9,7 +9,10 @@
 #   cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
 #   - Gemma 4 MoE 版本，激活参数只有 ~4B，单张 4090 24GB 可跑
 #   - AWQ 4bit 量化，实际占用显存 ~10-14GB，推理速度 ~53 tok/s
-#   - 社区已验证 vLLM 可跑，高于 bitsandbytes（后者 vLLM 即将废弃）
+#   - 社区已验证 vLLM 可跑
+#
+# 注意: vllm/vllm-openai 镜像的 entrypoint 已经是 "vllm serve"
+#         所以 command 里直接写模型名和参数，不要再写 serve
 
 version: "3.8"
 
@@ -42,9 +45,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    shm_size: "2gb"  # vLLM 张量传递需要共享内存，默认 64MB 会报错
+    shm_size: "2gb"
     command:
-      - serve
       - cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
       - --quantization
       - awq
@@ -70,4 +72,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 180s  # 模型加载时间较长
+      start_period: 180s
