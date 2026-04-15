@@ -23,8 +23,8 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
       WEB_ENABLE_AUTH: "false"
-      # 使用 comfyui venv 的 pip 安装依赖
-      PRE_START_SCRIPT: "/opt/environments/python/comfyui/bin/pip install -q gguf"
+      # ai-dock 正规 provisioning 机制: 安装 pip 包和 custom nodes
+      PROVISIONING_SCRIPT: "/opt/ComfyUI/custom_nodes/../../../config/provisioning/comfyui.sh"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
@@ -33,6 +33,8 @@ services:
       - /home/xi/.cache/huggingface:/root/.cache/huggingface
       # ai-dock 读取此文件作为 ComfyUI 启动参数
       - ./comfyui_args.conf:/etc/comfyui_args.conf:ro
+      # provisioning 脚本 mount 进容器
+      - ./config/provisioning:/config/provisioning:ro
     deploy:
       resources:
         limits:
