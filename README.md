@@ -81,8 +81,10 @@ vim .env   # 填写 HF_TOKEN、数据库密码、SAU_CDP_CLIENTS 等
 
 > **✅ 4090 友好方案：** 使用 GGUF Q4_K_M 量化版本，显存仅需 ~18GB，无需 CPU offload，生成速度约 **1 分钟/条**。
 
-> **⚠️ 重要：** `hf download` 的 `--local-dir` 会保留 repo 内的子目录结构。
-> 下面的命令已针对每个文件的最终落点做了处理，执行后目录结构与 workflow.json 精确匹配。
+> **⚠️ 关于 `hf download` 路径行为：**
+> - 使用**位置参数**（`hf download <repo> <file>`）下载单文件时，`--local-dir` 直接作为落点目录，**不会保留 repo 内子目录结构**。
+> - 使用 `--include` 过滤时，`--local-dir` 下**会保留 repo 内子目录**（如 `text_encoders/`）。
+> - 下面统一使用位置参数方式，文件直接落在目标目录，无需额外移动。
 
 ```bash
 # 在 llm-02 上执行
@@ -94,29 +96,24 @@ mkdir -p ./comfyui-data/{output,input,custom_nodes}
 # ── 主模型：LTX-2.3 Distilled GGUF Q4_K_M（约 15.1GB）──
 # 文件落点: comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
 hf download unsloth/LTX-2.3-GGUF \
-  --include "distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf" \
-  --local-dir ./comfyui-data/models/unet
+  distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf \
+  --local-dir ./comfyui-data/models/unet/distilled
 
-# ── VAE（约 400MB）──
-# hf download 会在 --local-dir 下保留 repo 内路径，所以指向 models/（不带 vae 子目录）
+# ── VAE（约 1.4GB）──
 # 文件落点: comfyui-data/models/vae/ltx-2.3-22b-dev_video_vae.safetensors
 hf download unsloth/LTX-2.3-GGUF \
-  --include "vae/ltx-2.3-22b-dev_video_vae.safetensors" \
-  --local-dir ./comfyui-data/models
+  vae/ltx-2.3-22b-dev_video_vae.safetensors \
+  --local-dir ./comfyui-data/models/vae
 
 # ── Gemma 3 文字编码器 GGUF 版（约 8GB，LTX 2.3 专用）──
 # CLIPLoaderGGUF 节点扫描的是 models/clip/ 目录
-# hf download 会在 --local-dir 下保留 text_encoders/ 子目录，所以先下载再移动
 # 文件落点: comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
 hf download unsloth/LTX-2.3-GGUF \
-  --include "text_encoders/gemma-3-12b-it-q4_k_m.gguf" \
-  --local-dir ./comfyui-data/models/clip_tmp
-mv ./comfyui-data/models/clip_tmp/text_encoders/gemma-3-12b-it-q4_k_m.gguf \
-   ./comfyui-data/models/clip/
-rm -rf ./comfyui-data/models/clip_tmp
+  text_encoders/gemma-3-12b-it-q4_k_m.gguf \
+  --local-dir ./comfyui-data/models/clip
 
 # ── 验证文件落点（三个文件都应该出现）──
-find ./comfyui-data/models -name "*.gguf" -o -name "*.safetensors" | sort
+find ./comfyui-data/models -name "*.gguf" -o -name "*.safetensors" | grep -v ".cache" | sort
 # 预期输出:
 # ./comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
 # ./comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
@@ -267,7 +264,6 @@ workflow.json 用到的所有 ComfyUI 节点及其来源：
 | `clip_name` (CLIPLoaderGGUF) | `gemma-3-12b-it-q4_k_m.gguf` | `comfyui-data/models/clip/` | `models/clip/` |
 
 > **注意：** `CLIPLoaderGGUF` 节点扫描的是 `models/clip/` 目录，不是 `models/text_encoders/`。
-> 下载命令里通过临时目录 + mv 确保文件落在正确位置。
 
 ## 常见问题
 
