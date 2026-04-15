@@ -7,7 +7,7 @@ FROM ghcr.io/ai-dock/comfyui:v2-cuda-12.1.1-base-22.04
 # The ai-dock base image ships an older ComfyUI that may lack comfy_api
 # (required by ComfyUI-LTXVideo >= 2026-03). We pin to a specific commit
 # that includes comfy_api and is known to work with all three custom nodes.
-# Commit: 2026-04-15 "Update workflow templates to v0.9.54"
+# Commit: 2026-04-15 "Update workflow templates to v0.9.54" (v0.9.54)
 # To update: change the SHA below to the desired commit
 RUN cd /opt/ComfyUI && git fetch origin && git checkout 7ce3f64c784430e15731d344affffb48c55a0eaa
 
@@ -16,31 +16,37 @@ RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     -r /opt/ComfyUI/requirements.txt
 
 # ────────────────────────────────────────────────────────────
-# Custom node pip deps — baked into image so container rebuilds don’t lose them
-# Custom node code lives on the host volume (./comfyui-data/custom_nodes/)
-# Note: do NOT use USER directives — ai-dock sets up the user account at runtime
+# Custom node pip deps — baked into image so container rebuilds don’t lose them.
+# Custom node code lives on the host volume (./comfyui-data/custom_nodes/).
+# Note: do NOT use USER directives — ai-dock sets up the user account at runtime.
+#
+# Version pinning strategy:
+#   - Direct deps: pinned to exact version (==)
+#   - huggingface_hub: NOT pinned here; let pip resolve the version that
+#     satisfies both diffusers (>=0.27) and transformers (>=0.30) constraints.
 # ────────────────────────────────────────────────────────────
 
 # ── ComfyUI-GGUF (city96/ComfyUI-GGUF) ──
-# Pinned node commit on host: latest as of 2026-04-14
+# Node commit on host: pinned to 2026-04-14 HEAD
 # Required for: UnetLoaderGGUF, CLIPLoaderGGUF
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     "gguf==0.13.0"
 
 # ── ComfyUI-LTXVideo (Lightricks/ComfyUI-LTXVideo) ──
-# Pinned node commit on host: d43181d (2026-04-13)
+# Node commit on host: d43181d (2026-04-13)
 # Required for: LTXVConditioning, EmptyLTXVLatentVideo
 # Requires ComfyUI >= 0.3.x (comfy_api module)
+# huggingface_hub is intentionally unpinned here to avoid conflict between
+# diffusers (>=0.27.0) and transformers (>=0.30.0) constraints.
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     "diffusers==0.33.1" \
     "einops==0.8.1" \
-    "huggingface_hub==0.29.3" \
     "kornia==0.8.0" \
     "ninja==1.11.1.4" \
     "transformers[timm]==4.51.3"
 
 # ── ComfyUI-VideoHelperSuite (Kosinkadink/ComfyUI-VideoHelperSuite) ──
-# Pinned node commit on host: 2984ec4 (2026-04-06)
+# Node commit on host: 2984ec4 (2026-04-06)
 # Required for: VHS_VideoCombine (frame sequence → mp4)
 # Note: 'av' (PyAV) is an undeclared runtime dep missing from requirements.txt
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
