@@ -77,7 +77,7 @@ cp .env.example .env
 vim .env   # 填写 HF_TOKEN、数据库密码、SAU_CDP_CLIENTS 等
 ```
 
-### 2. llm-02：准备 LTX 2.3 GGUF 模型文件
+### 2. llm-02：准备模型文件和 Custom Nodes
 
 > **✅ 4090 友好方案：** 使用 GGUF Q4_K_M 量化版本，显存仅需 ~18GB，无需 CPU offload，生成速度约 **1 分钟/条**。
 
@@ -101,32 +101,37 @@ hf download unsloth/LTX-2.3-GGUF \
   --include "text_encoders/gemma-3-12b-it-q4_k_m.gguf" \
   --local-dir ./comfyui-data/models/text_encoders/
 
-# ── 安装 ComfyUI-GGUF 自定义节点（GGUF 格式必须）──
-git clone https://github.com/city96/ComfyUI-GGUF.git ./comfyui-data/custom_nodes/ComfyUI-GGUF
+# ── Custom Nodes（持久化到宿主机，不随容器重建丢失）──
+
+# ComfyUI-GGUF：GGUF 格式模型加载节点（UnetLoaderGGUF, CLIPLoaderGGUF）
+git clone https://github.com/city96/ComfyUI-GGUF.git \
+  ./comfyui-data/custom_nodes/ComfyUI-GGUF
+
+# ComfyUI-LTXVideo：LTX-Video 专用节点（LTXVConditioning 等）
+git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git \
+  ./comfyui-data/custom_nodes/ComfyUI-LTXVideo
 ```
+
+> **磁盘空间提示：** 模型文件共计约 **25GB**，远少于 safetensors 版的 55GB。
 
 ### 3. llm-02：构建并启动 ComfyUI
 
-> **说明：** `Dockerfile.comfyui` 在构建阶段将 `gguf` Python 包固化进镜像，
+> **说明：** `Dockerfile.comfyui` 在构建阶段将所有 custom node 的 pip 依赖固化进镜像层，
 > 避免 `docker compose down && up -d` 后依赖丢失。首次构建需要几分钟。
 
 ```bash
-# 首次构建（或 Dockerfile 有改动时）
+# 首次构建（或 Dockerfile.comfyui 有改动时）
 docker compose -f docker-compose.comfyui.yml build --no-cache
 
 # 启动
 docker compose -f docker-compose.comfyui.yml up -d
 
-# 确认 ComfyUI-GGUF 节点加载成功
+# 确认节点加载成功（应无 IMPORT FAILED）
 docker exec vidpipe-comfyui tail -n 50 /var/log/supervisor/comfyui.log
-# 应看到：「0.x seconds: /opt/ComfyUI/custom_nodes/ComfyUI-GGUF」（无 IMPORT FAILED）
 
 # 日常重启（不需要重新 build）
-docker compose -f docker-compose.comfyui.yml down
-docker compose -f docker-compose.comfyui.yml up -d
+docker compose -f docker-compose.comfyui.yml down && docker compose -f docker-compose.comfyui.yml up -d
 ```
-
-> **磁盘空间提示：** 以上文件合计约 **25GB**，远少于 safetensors 版的 55GB。
 
 ### 4. llm-01：启动主服务 + vLLM
 
@@ -141,9 +146,6 @@ docker compose -f docker-compose.yml up -d
 
 # 启动 vLLM（首次启动会从 HuggingFace 下载 Gemma 4 AWQ，约 15GB）
 docker compose -f docker-compose.vllm.yml up -d
-
-# 查看 Gemma 4 加载进度
-docker logs -f vidpipe-vllm
 
 # 确认 vLLM 就绪
 curl http://localhost:8000/health
@@ -182,28 +184,49 @@ curl -X POST "http://localhost:8080/cookie/login/douyin?cdp_url=http://192.168.1
 curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.100:9222"
 ```
 
-Playwright 会远程控制你权机的 Chrome 弹出登录页，扫码/手机登录后 cookie 自动保存到 llm-01，后续发布无需再登录。
-
-> 如果有多台设备，在 `.env` 里配置 `SAU_CDP_CLIENTS=http://ip1:9222,http://ip2:9222`，用 `GET /clients` 查看哪台在线。
+> 如果有多台设备，在 `.env` 里配置 `SAU_CDP_CLIENTS=http://ip1:9222,http://ip2:9222`。
 
 ### 6. 导入 n8n 工作流
 
 1. 打开 `http://llm-01.localdomain:5678`
 2. 进入 **Workflows → Import from File**
 3. 选择 `workflow.json`
-4. 在 **Settings** 里确认环境变量 `LLM_BASE_URL`、`LLM_MODEL`、`COMFYUI_URL` 已注入
+4. 确认环境变量 `LLM_BASE_URL`、`LLM_MODEL`、`COMFYUI_URL` 已注入
+
+## ComfyUI 镜像说明
+
+自建镜像（`Dockerfile.comfyui`）基于 `ghcr.io/ai-dock/comfyui:latest-cuda`，在构建阶段将所有 custom node 的 Python 依赖固化进镜像层。Custom node 本身通过 volume mount 持久化在宿主机。
+
+### Custom Nodes 一览
+
+| Node | Repo | 作用 | 依赖安装方式 |
+|---|---|---|---|
+| ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | GGUF 模型加载（UnetLoaderGGUF, CLIPLoaderGGUF） | 镜像内 pip install gguf |
+| ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | LTX-Video 采样节点（LTXVConditioning 等） | 镜像内 pip install requirements |
+
+**添加新 custom node 的正确姿势：**
+1. `git clone <repo> ./comfyui-data/custom_nodes/<name>`（宿主机上执行）
+2. 如有 `requirements.txt`，将内容添加到 `Dockerfile.comfyui` 里的 pip install 指令
+3. `docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d`
+
+### 关键环境变量
+
+| 变量 | 说明 |
+|---|---|
+| `COMFYUI_ARGS` | ComfyUI 启动参数，如 `--listen 0.0.0.0`（注意：旧版文档中的 `CLI_ARGS` 对该镜像无效） |
+| `WEB_ENABLE_AUTH` | 设为 `false` 禁用 Caddy 的 Basic Auth |
+| `HUGGING_FACE_HUB_TOKEN` | HF Token |
 
 ## LTX 2.3 Distilled GGUF 在 4090 上的配置建议
 
 | 参数 | 推荐值 | 说明 |
 |---|---|---|
 | 模型 | `ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | 15.1GB，4090 显存充裕，无需 offload |
-| 加载节点 | `UnetLoaderGGUF`（ComfyUI-GGUF 插件） | 标准 CheckpointLoader 不支持 GGUF |
+| 加载节点 | `UnetLoaderGGUF`（ComfyUI-GGUF） | 标准 CheckpointLoader 不支持 GGUF |
 | 分辨率 | 768×1280 (9:16) | 竖版，4090 全速运行 |
 | 帧数 | 97 帧 (≈4s @24fps) | 超过 121 帧质量下降 |
 | Steps | 8–15 | Distilled 版步数少，约 1min/条 |
 | CFG | 1.0 | Distilled 模型不需要高 CFG |
-| ComfyUI 启动参数 | 无需 `--lowvram` | GGUF 显存占用 ~18GB，4090 绰绰有余 |
 
 ## workflow.json 中使用的模型文件对照
 
@@ -213,45 +236,31 @@ Playwright 会远程控制你权机的 Chrome 弹出登录页，扫码/手机登
 | `vae_name` | `ltx-2.3-22b-dev_video_vae.safetensors` | `models/vae/` |
 | `clip_name` (CLIPLoaderGGUF) | `gemma-3-12b-it-q4_k_m.gguf` | `models/text_encoders/` |
 
-## ComfyUI 镜像说明
-
-本项目使用自建镜像（`Dockerfile.comfyui`），基于 `ghcr.io/ai-dock/comfyui:latest-cuda`，在构建阶段额外完成：
-
-- 将 `gguf` Python 包安装进 comfyui venv，避免容器重建后依赖丢失
-- `ComfyUI-GGUF` custom node 通过 volume mount 持久化在宿主机 `./comfyui-data/custom_nodes/`
-
-**ai-dock 镜像关键环境变量：**
-
-| 变量 | 说明 |
-|---|---|
-| `COMFYUI_ARGS` | ComfyUI 启动参数，如 `--listen 0.0.0.0` |
-| `WEB_ENABLE_AUTH` | 设为 `false` 禁用 Caddy 的 Basic Auth |
-| `HUGGING_FACE_HUB_TOKEN` | HF Token，用于下载私有/受限模型 |
-
-> **注意：** ai-dock 镜像内部 ComfyUI 实际监听端口为 18188，由 Caddy 代理到 8188。`COMFYUI_ARGS` 是正确的启动参数变量，旧版文档中出现的 `CLI_ARGS` 对该镜像无效。
-
 ## 常见问题
 
-**`UnetLoaderGGUF` 节点找不到**  
-确认 `ComfyUI-GGUF` 已 clone 到 `./comfyui-data/custom_nodes/ComfyUI-GGUF/`，重启 ComfyUI 后节点会出现在菜单里。
+**`LTXVConditioning` 节点不存在 / 找不到**  
+`ComfyUI-LTXVideo` 未安装。执行 `git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git ./comfyui-data/custom_nodes/ComfyUI-LTXVideo`，然后 `docker compose -f docker-compose.comfyui.yml build --no-cache && up -d`。
 
-**`No module named 'gguf'`**  
-容器重建后出现此错误，说明使用了旧镜像。执行 `docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d` 重新构建即可。
+**`UnetLoaderGGUF` 节点找不到**  
+`ComfyUI-GGUF` 未安装。执行 `git clone https://github.com/city96/ComfyUI-GGUF.git ./comfyui-data/custom_nodes/ComfyUI-GGUF`，然后重新 build。
+
+**`No module named 'gguf'` 或 pip 依赖缺失**  
+容器重建后出现，说明使用了旧镜像。执行 `docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d`。
 
 **ComfyUI CUDA OOM**  
-将帧数降到 65（约 2.7s），或分辨率降到 512×896，GGUF 版本极少 OOM。
+将帧数降到 65（约 2.7s），或分辨率降到 512×896。
 
 **`hf: command not found`**  
-用 `pip install -U "huggingface_hub[cli]"` 安装/升级，新 CLI 命令是 `hf`，旧版 `huggingface-cli` 已被替代。
+`pip install -U "huggingface_hub[cli]"`，新 CLI 命令是 `hf`。
 
 **vLLM JSON 输出带 markdown 代码块**  
-在 system prompt 末尾加：`只输出 JSON 对象本身，不要包含任何 markdown 格式或代码块包裹。`（workflow.json 中已内置）
+在 system prompt 末尾加：`只输出 JSON 对象本身，不要包含任何 markdown 格式或代码块包裹。`
 
 **n8n 无法访问 llm-02 的 ComfyUI**  
-检查 `.env` 里 `COMFYUI_URL` 是否填了 `10.0.0.2:8188`（IB）或 `llm-02.tbd:8188`（千兆），确认防火墙放行 8188 端口。
+检查 `.env` 里 `COMFYUI_URL` 是否填了 `10.0.0.2:8188`，确认防火墙放行 8188 端口。
 
 **sau-backend 登录时 Chrome 没有弹出**  
-确认 Mac/Windows 上 Chrome 已开启 `--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0`，并确认 llm-01 可以访问到该 IP 的 9222 端口。
+确认 Chrome 已开启 `--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0`。
 
-**下载 Lightricks/LTX-Video 或 Lightricks/LTX-2.3 找不到 GGUF 文件**  
+**下载 GGUF 模型找不到文件**  
 GGUF 量化版由 unsloth 维护，repo 是 `unsloth/LTX-2.3-GGUF`，不在 Lightricks 官方 repo 内。

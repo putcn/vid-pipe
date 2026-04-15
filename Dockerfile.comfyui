@@ -1,8 +1,21 @@
 FROM ghcr.io/ai-dock/comfyui:latest-cuda
 
-# Install gguf into the comfyui venv at build time so it survives container rebuilds.
-# ComfyUI-GGUF custom node is volume-mounted from the host (comfyui-data/custom_nodes),
-# so we only need the pip package here.
-# Note: do NOT switch USER here - ai-dock sets up the 'user' account at runtime,
-# not at build time, so USER user fails during docker build.
+# Install pip packages into the comfyui venv at build time so they survive container rebuilds.
+# Custom nodes themselves are volume-mounted from the host (comfyui-data/custom_nodes/),
+# but their Python dependencies must be baked into the image.
+#
+# Note: do NOT use USER directives here - ai-dock creates the 'user' account at
+# runtime via entrypoint, not at build time.
+
+# ── ComfyUI-GGUF: required for loading GGUF quantized models ──
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir "gguf>=0.13.0"
+
+# ── ComfyUI-LTXVideo: required for LTXVConditioning and other LTX-Video nodes ──
+# Installing dependencies upfront; the node itself is cloned to the host volume.
+RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
+    diffusers \
+    einops \
+    "huggingface_hub>=0.25.2" \
+    kornia \
+    "ninja~=1.11.1.4" \
+    "transformers[timm]>=4.50.0"
