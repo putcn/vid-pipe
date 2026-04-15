@@ -1,6 +1,8 @@
 # docker-compose.comfyui.yml
 # 运行在 llm-02 机器上（16core CPU, 64G RAM, RTX 4090 24GB）
-# 用法: docker compose -f docker-compose.comfyui.yml up -d
+# 用法:
+#   首次或更新依赖: docker compose -f docker-compose.comfyui.yml build --no-cache
+#   启动:           docker compose -f docker-compose.comfyui.yml up -d
 
 version: "3.8"
 
@@ -10,7 +12,10 @@ networks:
 
 services:
   comfyui:
-    image: ghcr.io/ai-dock/comfyui:latest-cuda
+    build:
+      context: .
+      dockerfile: Dockerfile.comfyui
+    image: vidpipe-comfyui:local
     container_name: vidpipe-comfyui
     restart: unless-stopped
     networks: [vidpipe_comfy]
@@ -23,18 +28,17 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
       WEB_ENABLE_AUTH: "false"
-      # ai-dock 正规 provisioning 机制: 安装 pip 包和 custom nodes
-      PROVISIONING_SCRIPT: "/config/provisioning/comfyui.sh"
+      # ai-dock 正确的启动参数变量
+      COMFYUI_ARGS: "--listen 0.0.0.0"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
       - ./comfyui-data/input:/opt/ComfyUI/input
+      # ComfyUI-GGUF 和其他 custom nodes 持久化在寿主机
       - ./comfyui-data/custom_nodes:/opt/ComfyUI/custom_nodes
       - /home/xi/.cache/huggingface:/root/.cache/huggingface
-      # ai-dock 读取此文件作为 ComfyUI 启动参数
+      # ComfyUI 启动参数文件
       - ./comfyui_args.conf:/etc/comfyui_args.conf:ro
-      # provisioning 脚本 mount 进容器
-      - ./config/provisioning:/config/provisioning:ro
     deploy:
       resources:
         limits:
