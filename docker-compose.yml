@@ -25,6 +25,14 @@ services:
       timeout: 5s
       retries: 5
 
+  # 一次性初始化：建目录并授权
+  data-init:
+    image: alpine:latest
+    command: ["sh", "-c", "mkdir -p /data/videos /data/cookies && chmod 777 /data/videos /data/cookies"]
+    volumes:
+      - shared_data:/data
+    restart: "no"
+
   n8n:
     build:
       context: .
@@ -49,7 +57,6 @@ services:
       N8N_RUNNERS_MODE: external
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       N8N_RUNNERS_BROKER_LISTEN_ADDRESS: "0.0.0.0"
-      # task runner 超时，单位秒，设为 600s 容纳视频生成
       N8N_RUNNERS_TASK_TIMEOUT: "600"
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
@@ -62,6 +69,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -71,12 +80,9 @@ services:
       dockerfile: Dockerfile.runner
     restart: unless-stopped
     networks: [vidpipe]
-    user: root
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/videos /data/cookies && chmod 777 /data/videos /data/cookies && exec su runner -s /bin/sh -c '/usr/local/bin/launcher'"]
     environment:
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
-      # runner 侧超时也需要同步调大
       N8N_RUNNERS_TASK_TIMEOUT: "600"
       SAU_VIDEO_DIR: /data/videos
       COMFYUI_URL: ${COMFYUI_URL}
@@ -88,6 +94,7 @@ services:
       - shared_data:/data
     depends_on:
       - n8n
+      - data-init
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
