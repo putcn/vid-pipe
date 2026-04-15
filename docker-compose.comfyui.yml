@@ -24,7 +24,7 @@ services:
       HF_HOME: /root/.cache/huggingface
       WEB_ENABLE_AUTH: "false"
       # ai-dock 正规 provisioning 机制: 安装 pip 包和 custom nodes
-      PROVISIONING_SCRIPT: "/opt/ComfyUI/custom_nodes/../../../config/provisioning/comfyui.sh"
+      PROVISIONING_SCRIPT: "/config/provisioning/comfyui.sh"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
