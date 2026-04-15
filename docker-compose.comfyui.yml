@@ -22,7 +22,6 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
-      CLI_ARGS: "--listen 0.0.0.0 --port 8188"
       WEB_ENABLE_AUTH: "false"
       # 使用 comfyui venv 的 pip 安装依赖
       PRE_START_SCRIPT: "/opt/environments/python/comfyui/bin/pip install -q gguf"
@@ -32,6 +31,8 @@ services:
       - ./comfyui-data/input:/opt/ComfyUI/input
       - ./comfyui-data/custom_nodes:/opt/ComfyUI/custom_nodes
       - /home/xi/.cache/huggingface:/root/.cache/huggingface
+      # ai-dock 读取此文件作为 ComfyUI 启动参数
+      - ./comfyui_args.conf:/etc/comfyui_args.conf:ro
     deploy:
       resources:
         limits:
