@@ -3,8 +3,6 @@ FROM ghcr.io/ai-dock/comfyui:latest-cuda
 # Install gguf into the comfyui venv at build time so it survives container rebuilds.
 # ComfyUI-GGUF custom node is volume-mounted from the host (comfyui-data/custom_nodes),
 # so we only need the pip package here.
-USER root
-
+# Note: do NOT switch USER here - ai-dock sets up the 'user' account at runtime,
+# not at build time, so USER user fails during docker build.
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir "gguf>=0.13.0"
-
-USER user
