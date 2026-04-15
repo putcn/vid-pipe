@@ -81,25 +81,46 @@ vim .env   # 填写 HF_TOKEN、数据库密码、SAU_CDP_CLIENTS 等
 
 > **✅ 4090 友好方案：** 使用 GGUF Q4_K_M 量化版本，显存仅需 ~18GB，无需 CPU offload，生成速度约 **1 分钟/条**。
 
+> **⚠️ 重要：** `hf download` 的 `--local-dir` 会保留 repo 内的子目录结构。
+> 下面的命令已针对每个文件的最终落点做了处理，执行后目录结构与 workflow.json 精确匹配。
+
 ```bash
 # 在 llm-02 上执行
-mkdir -p ./comfyui-data/models/{unet,text_encoders,vae,loras}
+mkdir -p ./comfyui-data/models/unet/distilled
+mkdir -p ./comfyui-data/models/vae
+mkdir -p ./comfyui-data/models/clip
 mkdir -p ./comfyui-data/{output,input,custom_nodes}
 
 # ── 主模型：LTX-2.3 Distilled GGUF Q4_K_M（约 15.1GB）──
+# 文件落点: comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
 hf download unsloth/LTX-2.3-GGUF \
   --include "distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf" \
-  --local-dir ./comfyui-data/models/unet/
+  --local-dir ./comfyui-data/models/unet
 
-# ── VAE（约 400MB，必须单独下载）──
+# ── VAE（约 400MB）──
+# hf download 会在 --local-dir 下保留 repo 内路径，所以指向 models/（不带 vae 子目录）
+# 文件落点: comfyui-data/models/vae/ltx-2.3-22b-dev_video_vae.safetensors
 hf download unsloth/LTX-2.3-GGUF \
   --include "vae/ltx-2.3-22b-dev_video_vae.safetensors" \
-  --local-dir ./comfyui-data/models/vae/
+  --local-dir ./comfyui-data/models
 
 # ── Gemma 3 文字编码器 GGUF 版（约 8GB，LTX 2.3 专用）──
+# CLIPLoaderGGUF 节点扫描的是 models/clip/ 目录
+# hf download 会在 --local-dir 下保留 text_encoders/ 子目录，所以先下载再移动
+# 文件落点: comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
 hf download unsloth/LTX-2.3-GGUF \
   --include "text_encoders/gemma-3-12b-it-q4_k_m.gguf" \
-  --local-dir ./comfyui-data/models/text_encoders/
+  --local-dir ./comfyui-data/models/clip_tmp
+mv ./comfyui-data/models/clip_tmp/text_encoders/gemma-3-12b-it-q4_k_m.gguf \
+   ./comfyui-data/models/clip/
+rm -rf ./comfyui-data/models/clip_tmp
+
+# ── 验证文件落点（三个文件都应该出现）──
+find ./comfyui-data/models -name "*.gguf" -o -name "*.safetensors" | sort
+# 预期输出:
+# ./comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
+# ./comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
+# ./comfyui-data/models/vae/ltx-2.3-22b-dev_video_vae.safetensors
 
 # ── Custom Nodes（持久化到宿主机，不随容器重建丢失）──
 
@@ -199,7 +220,7 @@ curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.10
 
 ## ComfyUI 镜像说明
 
-自建镜像（`Dockerfile.comfyui`）基于 `ghcr.io/ai-dock/comfyui:latest-cuda`，在构建阶段将所有 custom node 的 Python 依赖固化进镜像层。Custom node 本身通过 volume mount 持久化在宿主机 `./comfyui-data/custom_nodes/`。
+自建镜像（`Dockerfile.comfyui`）基于 `ghcr.io/ai-dock/comfyui:v2-cuda-12.1.1-base-22.04`，在构建阶段将所有 custom node 的 Python 依赖固化进镜像层。Custom node 本身通过 volume mount 持久化在宿主机 `./comfyui-data/custom_nodes/`。
 
 ### Custom Nodes 完整清单
 
@@ -207,9 +228,9 @@ workflow.json 用到的所有 ComfyUI 节点及其来源：
 
 | class_type | 来自 | Repo | pip 依赖（已固化进镜像）|
 |---|---|---|---|
-| `UnetLoaderGGUF` `CLIPLoaderGGUF` | ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | `gguf>=0.13.0` |
-| `LTXVConditioning` `EmptyLTXVLatentVideo` | ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | `diffusers` `einops` `transformers[timm]` `kornia` `ninja` `huggingface_hub` |
-| `VHS_VideoCombine` | ComfyUI-VideoHelperSuite | [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | `opencv-python` `imageio-ffmpeg` |
+| `UnetLoaderGGUF` `CLIPLoaderGGUF` | ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | `gguf==0.13.0` |
+| `LTXVConditioning` `EmptyLTXVLatentVideo` | ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | `diffusers==0.33.1` `einops==0.8.1` `transformers[timm]==4.51.3` `kornia==0.8.0` `ninja==1.11.1.4` |
+| `VHS_VideoCombine` | ComfyUI-VideoHelperSuite | [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | `opencv-python==4.11.0.86` `imageio-ffmpeg==0.5.1` `av==13.1.0` |
 | `VAELoader` `CLIPTextEncode` `VAEDecode` `KSamplerSelect` `RandomNoise` `CFGGuider` `SamplerCustomAdvanced` `ManualSigmas` | ComfyUI 内置 | — | 无需额外安装 |
 
 ### 添加新 Custom Node 的正确姿势
@@ -239,11 +260,14 @@ workflow.json 用到的所有 ComfyUI 节点及其来源：
 
 ## workflow.json 中使用的模型文件对照
 
-| workflow.json 字段 | 实际文件名 | 存放路径 |
-|---|---|---|
-| `unet_name` (UnetLoaderGGUF) | `distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | `models/unet/` |
-| `vae_name` | `ltx-2.3-22b-dev_video_vae.safetensors` | `models/vae/` |
-| `clip_name` (CLIPLoaderGGUF) | `gemma-3-12b-it-q4_k_m.gguf` | `models/text_encoders/` |
+| workflow.json 字段 | 实际文件名 | 宿主机存放路径 | 容器内路径 |
+|---|---|---|---|
+| `unet_name` (UnetLoaderGGUF) | `distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | `comfyui-data/models/unet/distilled/` | `models/unet/distilled/` |
+| `vae_name` (VAELoader) | `ltx-2.3-22b-dev_video_vae.safetensors` | `comfyui-data/models/vae/` | `models/vae/` |
+| `clip_name` (CLIPLoaderGGUF) | `gemma-3-12b-it-q4_k_m.gguf` | `comfyui-data/models/clip/` | `models/clip/` |
+
+> **注意：** `CLIPLoaderGGUF` 节点扫描的是 `models/clip/` 目录，不是 `models/text_encoders/`。
+> 下载命令里通过临时目录 + mv 确保文件落在正确位置。
 
 ## 常见问题
 
