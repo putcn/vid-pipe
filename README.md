@@ -62,7 +62,7 @@
 ### 0. 前置条件
 
 - llm-01 和 llm-02 均安装 Docker + NVIDIA Container Toolkit
-- HuggingFace 账号（LTX-2.3 GGUF 和 Gemma 3 GGUF 均为开放权重，无需额外申请协议）
+- HuggingFace 账号（所有模型均为开放权重，无需额外申请协议）
 - 已安装最新版 `huggingface_hub`（CLI 命令为 `hf`，非旧版 `huggingface-cli`）
   ```bash
   pip install -U "huggingface_hub[cli]"
@@ -79,49 +79,66 @@ vim .env   # 填写 HF_TOKEN、数据库密码、SAU_CDP_CLIENTS 等
 
 ### 2. llm-02：准备模型文件和 Custom Nodes
 
-> **✅ 4090 友好方案：** 使用 GGUF Q4_K_M 量化版本，显存仅需 ~18GB，无需 CPU offload，生成速度约 **1 分钟/条**。
+> **✅ 4090 友好方案：** 使用 GGUF Q4 量化版本，显存仅需 ~22GB，无需 CPU offload，生成速度约 **1 分钟/条**。
 
-> **⚠️ 关于 `hf download` 路径行为：**
-> - 使用**位置参数**（`hf download <repo> <file>`）下载单文件时，`--local-dir` 直接作为落点目录，**不会保留 repo 内子目录结构**。
-> - 使用 `--include` 过滤时，`--local-dir` 下**会保留 repo 内子目录**（如 `text_encoders/`）。
-> - 下面统一使用位置参数方式，文件直接落在目标目录，无需额外移动。
+#### 模型文件全家桶（共 5 个文件、5 个 repo）
+
+| 文件 | 来源 repo | 大小 | 宿主机目标路径 |
+|---|---|---|---|
+| `ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | `unsloth/LTX-2.3-GGUF` | ~15GB | `models/unet/distilled/` |
+| `ltx-2.3-22b-dev_video_vae.safetensors` | `unsloth/LTX-2.3-GGUF` | ~1.4GB | `models/vae/` |
+| `ltx-2.3-22b-dev_embeddings_connectors.safetensors` | `unsloth/LTX-2.3-GGUF` | ~1GB | `models/text_encoders/` |
+| `gemma-3-12b-it-qat-UD-Q4_K_XL.gguf` | `unsloth/gemma-3-12b-it-qat-GGUF` | ~8GB | `models/text_encoders/` |
+| `mmproj-BF16.gguf` | `unsloth/gemma-3-12b-it-qat-GGUF` | ~500MB | `models/text_encoders/` |
+
+> **注意：** LTX 2.3 的文字编码器不能用普通 Gemma-3-12b-GGUF，必须使用 **qat（量化感知训练）** 版本，即 `unsloth/gemma-3-12b-it-qat-GGUF`。
+>
+> **关于 `hf download` 路径行为：** 使用**位置参数**（`hf download <repo> <文件路径>`）时，`--local-dir` 直接作为落点目录不保留 repo 内子目录。下面的命令已在 llm-02 上验证正确。
 
 ```bash
 # 在 llm-02 上执行
 mkdir -p ./comfyui-data/models/unet/distilled
 mkdir -p ./comfyui-data/models/vae
-mkdir -p ./comfyui-data/models/clip
+mkdir -p ./comfyui-data/models/text_encoders
 mkdir -p ./comfyui-data/{output,input,custom_nodes}
 
-# ── 主模型：LTX-2.3 Distilled GGUF Q4_K_M（约 15.1GB）──
-# 文件落点: comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
+# ── UNet：LTX-2.3 Distilled GGUF Q4_K_M（~15GB）──
 hf download unsloth/LTX-2.3-GGUF \
   distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf \
   --local-dir ./comfyui-data/models/unet/distilled
 
-# ── VAE（约 1.4GB）──
-# 文件落点: comfyui-data/models/vae/ltx-2.3-22b-dev_video_vae.safetensors
+# ── VAE（~1.4GB）──
 hf download unsloth/LTX-2.3-GGUF \
   vae/ltx-2.3-22b-dev_video_vae.safetensors \
   --local-dir ./comfyui-data/models/vae
 
-# ── Gemma 3 文字编码器 GGUF 版（约 8GB，LTX 2.3 专用）──
-# CLIPLoaderGGUF 节点扫描的是 models/clip/ 目录
-# 文件落点: comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
+# ── LTX Embeddings Connector（~1GB）──
 hf download unsloth/LTX-2.3-GGUF \
-  text_encoders/gemma-3-12b-it-q4_k_m.gguf \
-  --local-dir ./comfyui-data/models/clip
+  text_encoders/ltx-2.3-22b-dev_embeddings_connectors.safetensors \
+  --local-dir ./comfyui-data/models/text_encoders
 
-# ── 验证文件落点（三个文件都应该出现）──
+# ── Gemma 3 12B QAT 主体（~8GB，LTX 2.3 必须用 qat 版）──
+hf download unsloth/gemma-3-12b-it-qat-GGUF \
+  gemma-3-12b-it-qat-UD-Q4_K_XL.gguf \
+  --local-dir ./comfyui-data/models/text_encoders
+
+# ── Gemma mmproj（~500MB）──
+hf download unsloth/gemma-3-12b-it-qat-GGUF \
+  mmproj-BF16.gguf \
+  --local-dir ./comfyui-data/models/text_encoders
+
+# ── 验证（应看到 5 个文件）──
 find ./comfyui-data/models -name "*.gguf" -o -name "*.safetensors" | grep -v ".cache" | sort
 # 预期输出:
-# ./comfyui-data/models/clip/gemma-3-12b-it-q4_k_m.gguf
+# ./comfyui-data/models/text_encoders/gemma-3-12b-it-qat-UD-Q4_K_XL.gguf
+# ./comfyui-data/models/text_encoders/ltx-2.3-22b-dev_embeddings_connectors.safetensors
+# ./comfyui-data/models/text_encoders/mmproj-BF16.gguf
 # ./comfyui-data/models/unet/distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf
 # ./comfyui-data/models/vae/ltx-2.3-22b-dev_video_vae.safetensors
 
 # ── Custom Nodes（持久化到宿主机，不随容器重建丢失）──
 
-# 1. ComfyUI-GGUF：GGUF 格式模型加载（UnetLoaderGGUF, CLIPLoaderGGUF）
+# 1. ComfyUI-GGUF：GGUF 格式模型加载（UnetLoaderGGUF, DualCLIPLoaderGGUF）
 git clone https://github.com/city96/ComfyUI-GGUF.git \
   ./comfyui-data/custom_nodes/ComfyUI-GGUF
 
@@ -134,7 +151,7 @@ git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
   ./comfyui-data/custom_nodes/ComfyUI-VideoHelperSuite
 ```
 
-> **磁盘空间提示：** 以上模型文件合计约 **25GB**，远少于 safetensors 版的 55GB。
+> **磁盘空间提示：** 以上模型文件合计约 **26GB**。
 
 ### 3. llm-02：构建并启动 ComfyUI
 
@@ -221,13 +238,11 @@ curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.10
 
 ### Custom Nodes 完整清单
 
-workflow.json 用到的所有 ComfyUI 节点及其来源：
-
 | class_type | 来自 | Repo | pip 依赖（已固化进镜像）|
 |---|---|---|---|
-| `UnetLoaderGGUF` `CLIPLoaderGGUF` | ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | `gguf==0.13.0` |
-| `LTXVConditioning` `EmptyLTXVLatentVideo` | ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | `diffusers==0.33.1` `einops==0.8.1` `transformers[timm]==4.51.3` `kornia==0.8.0` `ninja==1.11.1.4` |
-| `VHS_VideoCombine` | ComfyUI-VideoHelperSuite | [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | `opencv-python==4.11.0.86` `imageio-ffmpeg==0.5.1` `av==13.1.0` |
+| `UnetLoaderGGUF` `DualCLIPLoaderGGUF` | ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | `gguf==0.13.0` |
+| `LTXVConditioning` `EmptyLTXVLatentVideo` | ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | `diffusers` `einops` `transformers[timm]` `kornia` `ninja` |
+| `VHS_VideoCombine` | ComfyUI-VideoHelperSuite | [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | `opencv-python` `imageio-ffmpeg` `av` |
 | `VAELoader` `CLIPTextEncode` `VAEDecode` `KSamplerSelect` `RandomNoise` `CFGGuider` `SamplerCustomAdvanced` `ManualSigmas` | ComfyUI 内置 | — | 无需额外安装 |
 
 ### 添加新 Custom Node 的正确姿势
@@ -248,8 +263,9 @@ workflow.json 用到的所有 ComfyUI 节点及其来源：
 
 | 参数 | 推荐值 | 说明 |
 |---|---|---|
-| 模型 | `ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | 15.1GB，4090 显存充裕，无需 offload |
-| 加载节点 | `UnetLoaderGGUF`（ComfyUI-GGUF） | 标准 CheckpointLoader 不支持 GGUF |
+| 模型 | `ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | ~15GB，4090 显存充裕 |
+| UNet 加载节点 | `UnetLoaderGGUF` | 标准 CheckpointLoader 不支持 GGUF |
+| 文字编码器节点 | `DualCLIPLoaderGGUF` | 同时加载 Gemma + mmproj |
 | 分辨率 | 768×1280 (9:16) | 竖版，4090 全速运行 |
 | 帧数 | 97 帧 (≈4s @24fps) | 超过 121 帧质量下降 |
 | Steps | 8–15 | Distilled 版步数少，约 1min/条 |
@@ -257,42 +273,31 @@ workflow.json 用到的所有 ComfyUI 节点及其来源：
 
 ## workflow.json 中使用的模型文件对照
 
-| workflow.json 字段 | 实际文件名 | 宿主机存放路径 | 容器内路径 |
-|---|---|---|---|
-| `unet_name` (UnetLoaderGGUF) | `distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | `comfyui-data/models/unet/distilled/` | `models/unet/distilled/` |
-| `vae_name` (VAELoader) | `ltx-2.3-22b-dev_video_vae.safetensors` | `comfyui-data/models/vae/` | `models/vae/` |
-| `clip_name` (CLIPLoaderGGUF) | `gemma-3-12b-it-q4_k_m.gguf` | `comfyui-data/models/clip/` | `models/clip/` |
-
-> **注意：** `CLIPLoaderGGUF` 节点扫描的是 `models/clip/` 目录，不是 `models/text_encoders/`。
+| workflow.json 字段 | 实际文件名 | 宿主机路径 |
+|---|---|---|
+| `unet_name` (UnetLoaderGGUF) | `distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf` | `comfyui-data/models/unet/distilled/` |
+| `vae_name` (VAELoader) | `ltx-2.3-22b-dev_video_vae.safetensors` | `comfyui-data/models/vae/` |
+| `clip_name1` (DualCLIPLoaderGGUF) | `gemma-3-12b-it-qat-UD-Q4_K_XL.gguf` | `comfyui-data/models/text_encoders/` |
+| `clip_name2` (DualCLIPLoaderGGUF) | `mmproj-BF16.gguf` | `comfyui-data/models/text_encoders/` |
+| connectors | `ltx-2.3-22b-dev_embeddings_connectors.safetensors` | `comfyui-data/models/text_encoders/` |
 
 ## 常见问题
-
-**`VHS_VideoCombine` 节点不存在**  
-`ComfyUI-VideoHelperSuite` 未安装。执行：
-```bash
-git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git ./comfyui-data/custom_nodes/ComfyUI-VideoHelperSuite
-docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
-```
-
-**`LTXVConditioning` 节点不存在**  
-`ComfyUI-LTXVideo` 未安装。执行：
-```bash
-git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git ./comfyui-data/custom_nodes/ComfyUI-LTXVideo
-docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
-```
-
-**`UnetLoaderGGUF` 节点不存在**  
-`ComfyUI-GGUF` 未安装。执行：
-```bash
-git clone https://github.com/city96/ComfyUI-GGUF.git ./comfyui-data/custom_nodes/ComfyUI-GGUF
-docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
-```
 
 **`No module named 'gguf'` 或其他 pip 依赖缺失**  
 容器重建后出现，说明使用了旧镜像。重新构建：
 ```bash
 docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
 ```
+
+**`VHS_VideoCombine` / `LTXVConditioning` / `UnetLoaderGGUF` 节点不存在**  
+对应的 custom node 未安装或未加载。先确认宿主机目录存在：
+```bash
+ls ./comfyui-data/custom_nodes/
+```
+缺少哪个就 `git clone` 对应的 repo，然后重新 build。
+
+**文字编码器加载出错 / 视频无内容**  
+确认使用的是 **qat** 版 Gemma，普通版不兼容 LTX 2.3。文件应为 `gemma-3-12b-it-**qat**-UD-Q4_K_XL.gguf`。
 
 **ComfyUI CUDA OOM**  
 将帧数降到 65（约 2.7s），或分辨率降到 512×896。
@@ -310,4 +315,4 @@ docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose 
 确认 Chrome 已开启 `--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0`。
 
 **下载 GGUF 模型找不到文件**  
-GGUF 量化版由 unsloth 维护，repo 是 `unsloth/LTX-2.3-GGUF`，不在 Lightricks 官方 repo 内。
+GGUF 量化版由 unsloth 维护， LTX 模型 repo 是 `unsloth/LTX-2.3-GGUF`，Gemma repo 是 `unsloth/gemma-3-12b-it-qat-GGUF`。
