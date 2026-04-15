@@ -49,7 +49,8 @@ RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
 # Node commit on host: 2984ec4 (2026-04-06)
 # Required for: VHS_VideoCombine (frame sequence → mp4)
 # Note: 'av' (PyAV) is an undeclared runtime dep missing from requirements.txt
+# av 14.3.0 does not exist on PyPI (jumps 14.2.0 → 14.4.0)
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     "opencv-python==4.11.0.86" \
     "imageio-ffmpeg==0.5.1" \
-    "av==14.3.0"
+    "av==14.4.0"
