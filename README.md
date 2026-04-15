@@ -103,20 +103,24 @@ hf download unsloth/LTX-2.3-GGUF \
 
 # ── Custom Nodes（持久化到宿主机，不随容器重建丢失）──
 
-# ComfyUI-GGUF：GGUF 格式模型加载节点（UnetLoaderGGUF, CLIPLoaderGGUF）
+# 1. ComfyUI-GGUF：GGUF 格式模型加载（UnetLoaderGGUF, CLIPLoaderGGUF）
 git clone https://github.com/city96/ComfyUI-GGUF.git \
   ./comfyui-data/custom_nodes/ComfyUI-GGUF
 
-# ComfyUI-LTXVideo：LTX-Video 专用节点（LTXVConditioning 等）
+# 2. ComfyUI-LTXVideo：LTX-Video 专用采样节点（LTXVConditioning, EmptyLTXVLatentVideo）
 git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git \
   ./comfyui-data/custom_nodes/ComfyUI-LTXVideo
+
+# 3. ComfyUI-VideoHelperSuite：帧序列合成 mp4（VHS_VideoCombine）
+git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
+  ./comfyui-data/custom_nodes/ComfyUI-VideoHelperSuite
 ```
 
-> **磁盘空间提示：** 模型文件共计约 **25GB**，远少于 safetensors 版的 55GB。
+> **磁盘空间提示：** 以上模型文件合计约 **25GB**，远少于 safetensors 版的 55GB。
 
 ### 3. llm-02：构建并启动 ComfyUI
 
-> **说明：** `Dockerfile.comfyui` 在构建阶段将所有 custom node 的 pip 依赖固化进镜像层，
+> **说明：** `Dockerfile.comfyui` 在构建阶段将所有 custom node 的 pip 依赖固化进镜像，
 > 避免 `docker compose down && up -d` 后依赖丢失。首次构建需要几分钟。
 
 ```bash
@@ -126,8 +130,8 @@ docker compose -f docker-compose.comfyui.yml build --no-cache
 # 启动
 docker compose -f docker-compose.comfyui.yml up -d
 
-# 确认节点加载成功（应无 IMPORT FAILED）
-docker exec vidpipe-comfyui tail -n 50 /var/log/supervisor/comfyui.log
+# 确认所有 custom nodes 加载成功（应无 IMPORT FAILED）
+docker exec vidpipe-comfyui tail -n 80 /var/log/supervisor/comfyui.log | grep -E "GGUF|LTX|VHS|IMPORT"
 
 # 日常重启（不需要重新 build）
 docker compose -f docker-compose.comfyui.yml down && docker compose -f docker-compose.comfyui.yml up -d
@@ -195,25 +199,30 @@ curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.10
 
 ## ComfyUI 镜像说明
 
-自建镜像（`Dockerfile.comfyui`）基于 `ghcr.io/ai-dock/comfyui:latest-cuda`，在构建阶段将所有 custom node 的 Python 依赖固化进镜像层。Custom node 本身通过 volume mount 持久化在宿主机。
+自建镜像（`Dockerfile.comfyui`）基于 `ghcr.io/ai-dock/comfyui:latest-cuda`，在构建阶段将所有 custom node 的 Python 依赖固化进镜像层。Custom node 本身通过 volume mount 持久化在宿主机 `./comfyui-data/custom_nodes/`。
 
-### Custom Nodes 一览
+### Custom Nodes 完整清单
 
-| Node | Repo | 作用 | 依赖安装方式 |
+workflow.json 用到的所有 ComfyUI 节点及其来源：
+
+| class_type | 来自 | Repo | pip 依赖（已固化进镜像）|
 |---|---|---|---|
-| ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | GGUF 模型加载（UnetLoaderGGUF, CLIPLoaderGGUF） | 镜像内 pip install gguf |
-| ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | LTX-Video 采样节点（LTXVConditioning 等） | 镜像内 pip install requirements |
+| `UnetLoaderGGUF` `CLIPLoaderGGUF` | ComfyUI-GGUF | [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | `gguf>=0.13.0` |
+| `LTXVConditioning` `EmptyLTXVLatentVideo` | ComfyUI-LTXVideo | [Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | `diffusers` `einops` `transformers[timm]` `kornia` `ninja` `huggingface_hub` |
+| `VHS_VideoCombine` | ComfyUI-VideoHelperSuite | [Kosinkadink/ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | `opencv-python` `imageio-ffmpeg` |
+| `VAELoader` `CLIPTextEncode` `VAEDecode` `KSamplerSelect` `RandomNoise` `CFGGuider` `SamplerCustomAdvanced` `ManualSigmas` | ComfyUI 内置 | — | 无需额外安装 |
 
-**添加新 custom node 的正确姿势：**
+### 添加新 Custom Node 的正确姿势
+
 1. `git clone <repo> ./comfyui-data/custom_nodes/<name>`（宿主机上执行）
-2. 如有 `requirements.txt`，将内容添加到 `Dockerfile.comfyui` 里的 pip install 指令
+2. 将 `requirements.txt` 内容追加到 `Dockerfile.comfyui` 对应的 `pip install` 指令
 3. `docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d`
 
 ### 关键环境变量
 
 | 变量 | 说明 |
 |---|---|
-| `COMFYUI_ARGS` | ComfyUI 启动参数，如 `--listen 0.0.0.0`（注意：旧版文档中的 `CLI_ARGS` 对该镜像无效） |
+| `COMFYUI_ARGS` | ComfyUI 启动参数，如 `--listen 0.0.0.0`（旧版文档中的 `CLI_ARGS` 对该镜像无效）|
 | `WEB_ENABLE_AUTH` | 设为 `false` 禁用 Caddy 的 Basic Auth |
 | `HUGGING_FACE_HUB_TOKEN` | HF Token |
 
@@ -238,14 +247,32 @@ curl -X POST "http://localhost:8080/cookie/login/xhs?cdp_url=http://192.168.1.10
 
 ## 常见问题
 
-**`LTXVConditioning` 节点不存在 / 找不到**  
-`ComfyUI-LTXVideo` 未安装。执行 `git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git ./comfyui-data/custom_nodes/ComfyUI-LTXVideo`，然后 `docker compose -f docker-compose.comfyui.yml build --no-cache && up -d`。
+**`VHS_VideoCombine` 节点不存在**  
+`ComfyUI-VideoHelperSuite` 未安装。执行：
+```bash
+git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git ./comfyui-data/custom_nodes/ComfyUI-VideoHelperSuite
+docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
+```
 
-**`UnetLoaderGGUF` 节点找不到**  
-`ComfyUI-GGUF` 未安装。执行 `git clone https://github.com/city96/ComfyUI-GGUF.git ./comfyui-data/custom_nodes/ComfyUI-GGUF`，然后重新 build。
+**`LTXVConditioning` 节点不存在**  
+`ComfyUI-LTXVideo` 未安装。执行：
+```bash
+git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git ./comfyui-data/custom_nodes/ComfyUI-LTXVideo
+docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
+```
 
-**`No module named 'gguf'` 或 pip 依赖缺失**  
-容器重建后出现，说明使用了旧镜像。执行 `docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d`。
+**`UnetLoaderGGUF` 节点不存在**  
+`ComfyUI-GGUF` 未安装。执行：
+```bash
+git clone https://github.com/city96/ComfyUI-GGUF.git ./comfyui-data/custom_nodes/ComfyUI-GGUF
+docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
+```
+
+**`No module named 'gguf'` 或其他 pip 依赖缺失**  
+容器重建后出现，说明使用了旧镜像。重新构建：
+```bash
+docker compose -f docker-compose.comfyui.yml build --no-cache && docker compose -f docker-compose.comfyui.yml up -d
+```
 
 **ComfyUI CUDA OOM**  
 将帧数降到 65（约 2.7s），或分辨率降到 512×896。

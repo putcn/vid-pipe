@@ -7,11 +7,11 @@ FROM ghcr.io/ai-dock/comfyui:latest-cuda
 # Note: do NOT use USER directives here - ai-dock creates the 'user' account at
 # runtime via entrypoint, not at build time.
 
-# ── ComfyUI-GGUF: required for loading GGUF quantized models ──
-RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir "gguf>=0.13.0"
+# ── ComfyUI-GGUF: required for UnetLoaderGGUF / CLIPLoaderGGUF ──
+RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
+    "gguf>=0.13.0"
 
-# ── ComfyUI-LTXVideo: required for LTXVConditioning and other LTX-Video nodes ──
-# Installing dependencies upfront; the node itself is cloned to the host volume.
+# ── ComfyUI-LTXVideo: required for LTXVConditioning / EmptyLTXVLatentVideo ──
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     diffusers \
     einops \
@@ -19,3 +19,8 @@ RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     kornia \
     "ninja~=1.11.1.4" \
     "transformers[timm]>=4.50.0"
+
+# ── ComfyUI-VideoHelperSuite: required for VHS_VideoCombine (frames → mp4) ──
+RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
+    opencv-python \
+    imageio-ffmpeg
