@@ -24,8 +24,8 @@ services:
       HF_HOME: /root/.cache/huggingface
       CLI_ARGS: "--listen 0.0.0.0 --port 8188"
       WEB_ENABLE_AUTH: "false"
-      # 容器启动时自动安装 gguf 包（ComfyUI-GGUF 插件依赖）
-      PRE_START_SCRIPT: "pip install -q gguf"
+      # 使用 comfyui venv 的 pip 安装依赖
+      PRE_START_SCRIPT: "/opt/environments/python/comfyui/bin/pip install -q gguf"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
