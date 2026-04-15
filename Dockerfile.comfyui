@@ -1,5 +1,14 @@
 FROM ghcr.io/ai-dock/comfyui:latest-cuda
 
+# ── Upgrade ComfyUI itself to latest ──
+# ai-dock base image may ship an older ComfyUI that lacks comfy_api module
+# (required by ComfyUI-LTXVideo). We upgrade in-place before installing nodes.
+RUN cd /opt/ComfyUI && git pull --ff-only
+
+# ── Upgrade ComfyUI Python deps after core upgrade ──
+RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
+    -r /opt/ComfyUI/requirements.txt
+
 # Install pip packages into the comfyui venv at build time so they survive container rebuilds.
 # Custom nodes themselves are volume-mounted from the host (comfyui-data/custom_nodes/),
 # but their Python dependencies must be baked into the image.
@@ -12,6 +21,7 @@ RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     "gguf>=0.13.0"
 
 # ── ComfyUI-LTXVideo: required for LTXVConditioning / EmptyLTXVLatentVideo ──
+# Requires comfy_api module which is only available in ComfyUI >= 0.3.x
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     diffusers \
     einops \
@@ -21,6 +31,8 @@ RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     "transformers[timm]>=4.50.0"
 
 # ── ComfyUI-VideoHelperSuite: required for VHS_VideoCombine (frames → mp4) ──
+# 'av' (PyAV) is an undocumented runtime dep not listed in requirements.txt
 RUN /opt/environments/python/comfyui/bin/pip install --no-cache-dir \
     opencv-python \
-    imageio-ffmpeg
+    imageio-ffmpeg \
+    av
