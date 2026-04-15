@@ -1,20 +1,6 @@
 # docker-compose.comfyui.yml
 # 运行在 llm-02 机器上（16core CPU, 64G RAM, RTX 4090 24GB）
-# 网络: llm-02.localdomain / llm-02.tbd / 10.0.0.2 (100G IB)
-# 用法:
-#   docker compose -f docker-compose.comfyui.yml up -d
-#
-# 首次启动前，先下载 GGUF 模型（详见 README.md Step 2）:
-#   mkdir -p ./comfyui-data/models/{unet,text_encoders,vae,loras,custom_nodes}
-#   hf download unsloth/LTX-2.3-GGUF \
-#     --include "distilled/ltx-2.3-22b-distilled-UD-Q4_K_M.gguf" \
-#     --local-dir ./comfyui-data/models/unet/
-#   hf download unsloth/LTX-2.3-GGUF \
-#     --include "vae/ltx-2.3-22b-dev_video_vae.safetensors" \
-#     --local-dir ./comfyui-data/models/vae/
-#   hf download unsloth/LTX-2.3-GGUF \
-#     --include "text_encoders/gemma-3-12b-it-q4_k_m.gguf" \
-#     --local-dir ./comfyui-data/models/text_encoders/
+# 用法: docker compose -f docker-compose.comfyui.yml up -d
 
 version: "3.8"
 
@@ -37,8 +23,9 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /root/.cache/huggingface
       CLI_ARGS: "--listen 0.0.0.0 --port 8188"
-      # 关闭 ai-dock 内置 Caddy 登录认证，允许 API 直接访问
       WEB_ENABLE_AUTH: "false"
+      # 容器启动时自动安装 gguf 包（ComfyUI-GGUF 插件依赖）
+      PRE_START_SCRIPT: "pip install -q gguf"
     volumes:
       - ./comfyui-data/models:/opt/ComfyUI/models
       - ./comfyui-data/output:/opt/ComfyUI/output
@@ -61,4 +48,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
